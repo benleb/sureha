@@ -5,6 +5,6 @@
     "documentation": "https://www.home-assistant.io/integrations/surepetcare",
     "issue_tracker": "https://github.com/benleb/surepetcare/issues",
     "codeowners": ["@benleb"],
-    "requirements": ["git+ssh://github.com/benleb/surepetcare.git@dev"],
+    "requirements": ["surepy>=0.6.0"],
     "iot_class": "cloud_polling"
 }
