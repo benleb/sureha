@@ -1,0 +1,10 @@
+{
+    "name": "Sure Petcare (beta)",
+    "documentation": "https://www.home-assistant.io/integrations/surepetcare",
+    "content_in_root": true,
+    "render_readme": true,
+    "domains": [
+        "binary_sensor",
+        "sensor"
+    ]
+}
