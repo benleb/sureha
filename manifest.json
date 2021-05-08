@@ -1,6 +1,7 @@
 {
     "domain": "surepetcare",
     "name": "Sure Petcare",
+    "version": "0.0.1",
     "documentation": "https://www.home-assistant.io/integrations/surepetcare",
     "codeowners": ["@benleb"],
     "requirements": ["surepy>=0.6.0"],
