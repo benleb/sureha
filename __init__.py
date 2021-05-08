@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 from surepy import Surepy
-from surepy.entities import SurepyEntity
 from surepy.enums import LockState
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
@@ -30,6 +29,7 @@ from .const import (
     SURE_API_TIMEOUT,
     TOPIC_UPDATE,
 )
+from pprint import pformat
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,12 +43,8 @@ CONFIG_SCHEMA = vol.Schema(
                 {
                     vol.Required(CONF_USERNAME): cv.string,
                     vol.Required(CONF_PASSWORD): cv.string,
-                    vol.Optional(CONF_FEEDERS): vol.All(
-                        cv.ensure_list, [cv.positive_int]
-                    ),
-                    vol.Optional(CONF_FLAPS): vol.All(
-                        cv.ensure_list, [cv.positive_int]
-                    ),
+                    vol.Optional(CONF_FEEDERS): vol.All(cv.ensure_list, [cv.positive_int]),
+                    vol.Optional(CONF_FLAPS): vol.All(cv.ensure_list, [cv.positive_int]),
                     vol.Optional(CONF_PETS): vol.All(cv.ensure_list, [cv.positive_int]),
                     vol.Optional(CONF_SCAN_INTERVAL): cv.time_period,
                 },
@@ -63,7 +59,7 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     """Set up the Sure Petcare integration."""
     conf = config[DOMAIN]
     hass.data.setdefault(DOMAIN, {})
@@ -94,20 +90,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.async_create_task(
         hass.helpers.discovery.async_load_platform("binary_sensor", DOMAIN, {}, config)
     )
-    hass.async_create_task(
-        hass.helpers.discovery.async_load_platform("sensor", DOMAIN, {}, config)
-    )
+    hass.async_create_task(hass.helpers.discovery.async_load_platform("sensor", DOMAIN, {}, config))
 
-    async def handle_set_lock_state(call):
+    async def handle_set_lock_state(call: Any) -> None:
         """Call when setting the lock state."""
         await spc.set_lock_state(call.data[ATTR_FLAP_ID], call.data[ATTR_LOCK_STATE])
         await spc.async_update()
 
     lock_state_service_schema = vol.Schema(
         {
-            vol.Required(ATTR_FLAP_ID): vol.All(
-                cv.positive_int, vol.In(spc.states.keys())
-            ),
+            vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(spc.states.keys())),
             vol.Required(ATTR_LOCK_STATE): vol.All(
                 cv.string,
                 vol.Lower,
@@ -148,7 +140,11 @@ class SurePetcareAPI:
         """Get the latest data from Sure Petcare."""
 
         try:
-            self.states = await self.surepy.get_entities()
+            if new_states := await self.surepy.get_entities(refresh=True):
+                _LOGGER.debug("successfully updated states for %d entities", len(new_states))
+                self.states = new_states
+            else:
+                _LOGGER.error("no data returned when fetching states?!")
         except SurePetcareError as error:
             _LOGGER.error("Unable to fetch data: %s", error)
 

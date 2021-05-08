@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from pprint import pformat
 
 from surepy.entities import SurepyEntity
 from surepy.enums import EntityType, Location, SureEnum
@@ -177,6 +178,7 @@ class Pet(SurePetcareBinarySensor):
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.location
+
         _LOGGER.debug("%s -> self._state: %s", self._name, self._state)
 
 
