@@ -14,7 +14,7 @@ logger:
   default: info
   logs:
     surepy: debug
-    custom_components.surepetcare: debug
-    custom_components.surepetcare.binary_sensor: debug
-    custom_components.surepetcare.sensor: debug
+    custom_components.surepetcarebeta: debug
+    custom_components.surepetcarebeta.binary_sensor: debug
+    custom_components.surepetcarebeta.sensor: debug
 ```
