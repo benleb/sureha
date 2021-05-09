@@ -7,7 +7,7 @@ from typing import Any
 
 from surepy import Surepy
 from surepy.enums import LockState
-from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
+from surepy.exceptions import SurePetcareAPIError, SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
@@ -29,7 +29,6 @@ from .const import (
     SURE_API_TIMEOUT,
     TOPIC_UPDATE,
 )
-from pprint import pformat
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -64,6 +63,11 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     conf = config[DOMAIN]
     hass.data.setdefault(DOMAIN, {})
 
+    logging.info("-------------------------------------------------------------------")
+    logging.info("  🐾 meeowww... to the beta of the surepetcare integration!")
+    logging.info("     code: https://github.com/benleb/surepetcare")
+    logging.info("-------------------------------------------------------------------")
+
     try:
         surepy = Surepy(
             conf[CONF_USERNAME],
@@ -75,8 +79,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     except SurePetcareAuthenticationError:
         _LOGGER.error("Unable to connect to surepetcare.io: Wrong credentials!")
         return False
-    except SurePetcareError as error:
-        _LOGGER.error("Unable to connect to surepetcare.io: Wrong %s!", error)
+    except SurePetcareAPIError as error:
+        _LOGGER.error("Unable to connect to surepetcare.io: %s", error)
         return False
 
     spc = SurePetcareAPI(hass, surepy)
@@ -140,15 +144,12 @@ class SurePetcareAPI:
         """Get the latest data from Sure Petcare."""
 
         try:
-            if new_states := await self.surepy.get_entities(refresh=True):
-                _LOGGER.debug("successfully updated states for %d entities", len(new_states))
-                self.states = new_states
-            else:
-                _LOGGER.error("no data returned when fetching states?!")
+            self.states = await self.surepy.get_entities(refresh=True)
+            _LOGGER.debug("🐾 | successfully updated states for %d entities", len(self.states))
         except SurePetcareError as error:
             _LOGGER.error("Unable to fetch data: %s", error)
-
-        async_dispatcher_send(self.hass, TOPIC_UPDATE)
+        else:
+            async_dispatcher_send(self.hass, TOPIC_UPDATE)
 
     async def set_lock_state(self, flap_id: int, state: str) -> None:
         """Update the lock state of a flap."""

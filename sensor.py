@@ -2,15 +2,21 @@
 from __future__ import annotations
 
 import logging
+
+from pprint import pformat
 from typing import Any
 
-from surepy.entities import SurepyEntity
-from surepy.enums import EntityType, LockState
-
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.const import ATTR_VOLTAGE, DEVICE_CLASS_BATTERY, PERCENTAGE
+from homeassistant.const import (
+    ATTR_VOLTAGE,
+    DEVICE_CLASS_BATTERY,
+    PERCENTAGE,
+    VOLUME_MILLILITERS,
+)
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from surepy.entities import SurepyEntity
+from surepy.enums import EntityType, LockState
 
 from . import SurePetcareAPI
 from .const import (
@@ -20,6 +26,7 @@ from .const import (
     SURE_BATT_VOLTAGE_LOW,
     TOPIC_UPDATE,
 )
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +44,8 @@ async def async_setup_platform(
 
     for surepy_entity in spc.states.values():
 
+        _LOGGER.info("🐾 %s -- %s", surepy_entity.name, surepy_entity.type)
+
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
             EntityType.PET_FLAP,
@@ -51,10 +60,13 @@ async def async_setup_platform(
         ]:
             entities.append(Flap(surepy_entity.id, spc))
 
+        if surepy_entity.type == EntityType.FELAQUA:
+            entities.append(Felaqua(surepy_entity.id, spc))
+
     async_add_entities(entities)
 
 
-class SurePetcareSensor(SensorEntity):
+class SurePetcareSensor(SensorEntity):  # type: ignore
     """A binary sensor implementation for Sure Petcare Entities."""
 
     def __init__(self, _id: int, spc: SurePetcareAPI):
@@ -66,7 +78,7 @@ class SurePetcareSensor(SensorEntity):
         self._surepy_entity: SurepyEntity = self._spc.states[_id]
         self._state: dict[str, Any] = {}
         self._name = (
-            f"{self._surepy_entity.type.name.capitalize()} "
+            f"{self._surepy_entity.type.name.replace('_', ' ').title()} "
             f"{self._surepy_entity.name.capitalize()}"
         )
 
@@ -90,16 +102,29 @@ class SurePetcareSensor(SensorEntity):
         """Return true."""
         return False
 
-    @callback
+    @callback  # type: ignore
     def _async_update(self) -> None:
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
-        _LOGGER.debug("%s -> self._state: %s", self._name, self._state)
+        _LOGGER.debug(
+            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
+        )
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
+
         self.async_on_remove(async_dispatcher_connect(self.hass, TOPIC_UPDATE, self._async_update))
+
+        @callback  # type: ignore
+        def update() -> None:
+            """Update the state."""
+            self.async_schedule_update_ha_state(True)
+
+        self._async_unsub_dispatcher_connect = async_dispatcher_connect(
+            self.hass, TOPIC_UPDATE, update
+        )
+
         self._async_update()
 
 
@@ -107,16 +132,43 @@ class Flap(SurePetcareSensor):
     """Sure Petcare Flap."""
 
     @property
-    def state(self) -> str | None:
+    def state(self) -> str:
         """Return battery level in percent."""
-        return LockState(self._state["locking"]["mode"]).name.capitalize()
+        return LockState(self._state["locking"]["mode"]).name.replace("_", " ").title()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes of the device."""
         attributes = None
         if self._state:
-            attributes = {"learn_mode": bool(self._state["learn_mode"])}
+            attributes = {
+                "learn_mode": bool(self._state["learn_mode"]),
+                **self._surepy_entity.raw_data(),
+            }
+
+        return attributes
+
+
+class Felaqua(SurePetcareSensor):
+    """Sure Petcare Felaqua."""
+
+    @property
+    def state(self) -> int | None:
+        """Return the remaining water."""
+        self._surepy_entity: Felaqua
+        return int(self._surepy_entity.water_remaining)
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return str(VOLUME_MILLILITERS)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the state attributes of the device."""
+        attributes = None
+        if self._state:
+            attributes = {**self._surepy_entity.raw_data()}
 
         return attributes
 
