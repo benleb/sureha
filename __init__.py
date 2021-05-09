@@ -148,8 +148,8 @@ class SurePetcareAPI:
             _LOGGER.debug("🐾 | successfully updated states for %d entities", len(self.states))
         except SurePetcareError as error:
             _LOGGER.error("Unable to fetch data: %s", error)
-        else:
-            async_dispatcher_send(self.hass, TOPIC_UPDATE)
+
+        async_dispatcher_send(self.hass, TOPIC_UPDATE)
 
     async def set_lock_state(self, flap_id: int, state: str) -> None:
         """Update the lock state of a flap."""
