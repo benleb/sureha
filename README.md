@@ -6,7 +6,7 @@
 
 ...and you have to change `surepetcare` in your `configuration.yaml` to `surepetcarebeta` if you used the official integration before!
 
-...and enable the debug logging in `configuration.yaml` if something does not work as expected!
+##### ...and enable the debug logging in `configuration.yaml` if something does not work as expected!
 
 ```yaml
 # logging
