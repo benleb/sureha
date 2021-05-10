@@ -221,7 +221,6 @@ class FeederBowl(SurePetcareSensor):
     @property
     def state(self) -> int | None:
         """Return the remaining water."""
-        self._surepy_entity: SureFeederBowl
         return int(self._surepy_entity.weight)
 
     @property
