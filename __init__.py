@@ -7,7 +7,7 @@ from typing import Any
 
 from surepy import Surepy
 from surepy.enums import LockState
-from surepy.exceptions import SurePetcareAPIError, SurePetcareAuthenticationError, SurePetcareError
+from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
@@ -79,7 +79,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     except SurePetcareAuthenticationError:
         _LOGGER.error("Unable to connect to surepetcare.io: Wrong credentials!")
         return False
-    except SurePetcareAPIError as error:
+    except SurePetcareError as error:
         _LOGGER.error("Unable to connect to surepetcare.io: %s", error)
         return False
 
