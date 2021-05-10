@@ -10,12 +10,14 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.const import (
     ATTR_VOLTAGE,
     DEVICE_CLASS_BATTERY,
+    MASS_GRAMS,
     PERCENTAGE,
     VOLUME_MILLILITERS,
 )
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from surepy.entities import SurepyEntity
+from surepy.entities.devices import Feeder as SureFeeder, FeederBowl as SureFeederBowl
 from surepy.enums import EntityType, LockState
 
 from . import SurePetcareAPI
@@ -63,6 +65,11 @@ async def async_setup_platform(
         if surepy_entity.type == EntityType.FELAQUA:
             entities.append(Felaqua(surepy_entity.id, spc))
 
+        if surepy_entity.type == EntityType.FEEDER:
+            entities.append(Feeder(surepy_entity.id, spc))
+            for bowl in surepy_entity.bowls.values():
+                entities.append(FeederBowl(surepy_entity.id, spc, bowl.raw_data()))
+
     async_add_entities(entities)
 
 
@@ -101,6 +108,15 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
     def should_poll(self) -> bool:
         """Return true."""
         return False
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return the state attributes of the device."""
+        attributes = None
+        if self._state:
+            attributes = {**self._surepy_entity.raw_data()}
+
+        return attributes
 
     @callback  # type: ignore
     def _async_update(self) -> None:
@@ -171,6 +187,85 @@ class Felaqua(SurePetcareSensor):
             attributes = {**self._surepy_entity.raw_data()}
 
         return attributes
+
+
+class FeederBowl(SurePetcareSensor):
+    """Sure Petcare Feeder Bowl."""
+
+    def __init__(self, _id: int, spc: SurePetcareAPI, bowl_data: dict[str, int | str]):
+        """Initialize a Sure Petcare sensor."""
+
+        self.feeder_id = _id
+        self.bowl_id = int(bowl_data["index"])
+
+        self._id = int(f"{_id}{str(self.bowl_id)}")
+        self._spc: SurePetcareAPI = spc
+
+        self._surepy_feeder_entity: SurepyEntity = self._spc.states[_id]
+        self._surepy_entity: SurepyEntity = self._spc.states[_id].bowls[self.bowl_id]
+        self._state: dict[str, Any] = bowl_data
+
+        # self._name = (
+        #     f"{self._surepy_feeder_entity.type.name.replace('_', ' ').title()} "
+        #     f"{self._surepy_feeder_entity.name.capitalize()} "
+        #     f"Bowl {self._surepy_entity.position}"
+        # )
+
+        self._name = self._surepy_entity.name
+
+    @property
+    def unique_id(self) -> str:
+        """Return an unique ID."""
+        return f"{self._surepy_feeder_entity.household_id}-{self.feeder_id}-{self.bowl_id}"
+
+    @property
+    def state(self) -> int | None:
+        """Return the remaining water."""
+        self._surepy_entity: SureFeederBowl
+        return int(self._surepy_entity.weight)
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return str(MASS_GRAMS)
+
+    @callback  # type: ignore
+    def _async_update(self) -> None:
+        """Get the latest data and update the state."""
+        self._surepy_feeder_entity = self._spc.states[self.feeder_id]
+        self._surepy_entity = self._spc.states[self.feeder_id].bowls[self.bowl_id]
+        self._state = self._surepy_entity.raw_data()
+        _LOGGER.debug(
+            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
+        )
+
+
+class Feeder(SurePetcareSensor):
+    """Sure Petcare Felaqua."""
+
+    @property
+    def state(self) -> int | None:
+        """Return the total remaining food."""
+        self._surepy_entity: SureFeeder
+        return int(self._surepy_entity.total_weight)
+
+    @property
+    def unit_of_measurement(self) -> str:
+        """Return the unit of measurement."""
+        return str(MASS_GRAMS)
+
+    @callback  # type: ignore
+    def _async_update(self) -> None:
+        """Get the latest data and update the state."""
+        self._surepy_entity = self._spc.states[self._id]
+        self._state = self._surepy_entity.raw_data()["status"]
+
+        for bowl_data in self._surepy_entity.raw_data()["lunch"]["weights"]:
+            self._surepy_entity.bowls[bowl_data["index"]]._data = bowl_data
+
+        _LOGGER.debug(
+            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
+        )
 
 
 class SureBattery(SurePetcareSensor):
