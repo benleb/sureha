@@ -7,6 +7,7 @@ from pprint import pformat
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_VOLTAGE,
     DEVICE_CLASS_BATTERY,
@@ -14,7 +15,7 @@ from homeassistant.const import (
     PERCENTAGE,
     VOLUME_MILLILITERS,
 )
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from surepy.entities import SurepyEntity
 from surepy.entities.devices import Feeder as SureFeeder, FeederBowl as SureFeederBowl
@@ -34,11 +35,15 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_platform(
-    hass: Any, config: dict[str, Any], async_add_entities: Any, discovery_info: Any = None
+    hass: HomeAssistant, config: ConfigEntry, async_add_entities: Any, discovery_info: Any = None
 ) -> None:
-    """Set up Sure PetCare Flaps sensors."""
-    if discovery_info is None:
-        return
+    await async_setup_entry(hass, config, async_add_entities)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: Any
+) -> None:
+    """Set up config entry Sure PetCare Flaps sensors."""
 
     entities: list[SurepyEntity] = []
 
@@ -46,7 +51,7 @@ async def async_setup_platform(
 
     for surepy_entity in spc.states.values():
 
-        _LOGGER.info("🐾 %s -- %s", surepy_entity.name, surepy_entity.type)
+        # _LOGGER.debug("🐾 adding sensors for %s (%s)...", surepy_entity.name, surepy_entity.type)
 
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
@@ -55,20 +60,25 @@ async def async_setup_platform(
             EntityType.FELAQUA,
         ]:
             entities.append(SureBattery(surepy_entity.id, spc))
+            _LOGGER.debug("🐾 battery sensor for %s added...", surepy_entity.name)
 
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
             EntityType.PET_FLAP,
         ]:
             entities.append(Flap(surepy_entity.id, spc))
+            _LOGGER.debug("🐾 flap sensor for %s added...", surepy_entity.name)
 
         if surepy_entity.type == EntityType.FELAQUA:
             entities.append(Felaqua(surepy_entity.id, spc))
+            _LOGGER.debug("🐾 felaqua sensor for %s added...", surepy_entity.name)
 
         if surepy_entity.type == EntityType.FEEDER:
             entities.append(Feeder(surepy_entity.id, spc))
+            _LOGGER.debug("🐾 feeder sensor for %s added...", surepy_entity.name)
             for bowl in surepy_entity.bowls.values():
                 entities.append(FeederBowl(surepy_entity.id, spc, bowl.raw_data()))
+                _LOGGER.debug("🐾   feeder bowl added...")
 
     async_add_entities(entities)
 
@@ -123,9 +133,7 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
-        _LOGGER.debug(
-            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
-        )
+        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -183,8 +191,15 @@ class Felaqua(SurePetcareSensor):
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes of the device."""
         attributes = None
-        if self._state:
-            attributes = {**self._surepy_entity.raw_data()}
+
+        attrs: dict[str, Any] = self._surepy_entity.raw_data()
+        weights: list[dict[str, int | float | str]] = attrs.get("drink", {}).get("weights")
+
+        for weight in weights:
+            attr_key = f"weight_{weight['index']}"
+            attrs[attr_key] = weight
+
+        attributes = attrs
 
         return attributes
 
@@ -202,16 +217,17 @@ class FeederBowl(SurePetcareSensor):
         self._spc: SurePetcareAPI = spc
 
         self._surepy_feeder_entity: SurepyEntity = self._spc.states[_id]
-        self._surepy_entity: SurepyEntity = self._spc.states[_id].bowls[self.bowl_id]
+        self._surepy_entity: SureFeederBowl = self._spc.states[_id].bowls[
+            self.bowl_id
+        ]  # type:ignore
         self._state: dict[str, Any] = bowl_data
 
-        # self._name = (
-        #     f"{self._surepy_feeder_entity.type.name.replace('_', ' ').title()} "
-        #     f"{self._surepy_feeder_entity.name.capitalize()} "
-        #     f"Bowl {self._surepy_entity.position}"
-        # )
-
         self._name = self._surepy_entity.name
+
+    @property
+    def name(self) -> str:
+        """Return the name of the device if any."""
+        return f"{self._name} "
 
     @property
     def unique_id(self) -> str:
@@ -234,9 +250,7 @@ class FeederBowl(SurePetcareSensor):
         self._surepy_feeder_entity = self._spc.states[self.feeder_id]
         self._surepy_entity = self._spc.states[self.feeder_id].bowls[self.bowl_id]
         self._state = self._surepy_entity.raw_data()
-        _LOGGER.debug(
-            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
-        )
+        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
 
 class Feeder(SurePetcareSensor):
@@ -259,12 +273,11 @@ class Feeder(SurePetcareSensor):
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
 
-        for bowl_data in self._surepy_entity.raw_data()["lunch"]["weights"]:
-            self._surepy_entity.bowls[bowl_data["index"]]._data = bowl_data
+        if lunch_data := self._surepy_entity.raw_data().get("lunch"):
+            for bowl_data in lunch_data["weights"]:
+                self._surepy_entity.bowls[bowl_data["index"]]._data = bowl_data
 
-        _LOGGER.debug(
-            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
-        )
+        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
 
 class SureBattery(SurePetcareSensor):

@@ -1,21 +1,23 @@
 """The surepetcare integration."""
 from __future__ import annotations
 
-from datetime import timedelta
 import logging
+
+from datetime import timedelta
 from typing import Any
 
-from surepy import Surepy
-from surepy.enums import LockState
-from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
+from surepy import Surepy
+from surepy.enums import LockState
+from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 
 from .const import (
     ATTR_FLAP_ID,
@@ -29,6 +31,7 @@ from .const import (
     SURE_API_TIMEOUT,
     TOPIC_UPDATE,
 )
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,20 +61,15 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
-async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
-    """Set up the Sure Petcare integration."""
-    conf = config[DOMAIN]
-    hass.data.setdefault(DOMAIN, {})
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up."""
 
-    logging.info("-------------------------------------------------------------------")
-    logging.info("  🐾 meeowww... to the beta of the surepetcare integration!")
-    logging.info("     code: https://github.com/benleb/surepetcare")
-    logging.info("-------------------------------------------------------------------")
+    hass.data.setdefault(DOMAIN, {})
 
     try:
         surepy = Surepy(
-            conf[CONF_USERNAME],
-            conf[CONF_PASSWORD],
+            entry.data[CONF_USERNAME],
+            entry.data[CONF_PASSWORD],
             auth_token=None,
             api_timeout=SURE_API_TIMEOUT,
             session=async_get_clientsession(hass),
@@ -83,60 +81,20 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         _LOGGER.error("Unable to connect to surepetcare.io: %s", error)
         return False
 
-    spc = SurePetcareAPI(hass, surepy)
+    spc = SurePetcareAPI(hass, entry, surepy)
     hass.data[DOMAIN][SPC] = spc
 
-    await spc.async_update()
-
-    async_track_time_interval(hass, spc.async_update, SCAN_INTERVAL)
-
-    # load platforms
-    hass.async_create_task(
-        hass.helpers.discovery.async_load_platform("binary_sensor", DOMAIN, {}, config)
-    )
-    hass.async_create_task(hass.helpers.discovery.async_load_platform("sensor", DOMAIN, {}, config))
-
-    async def handle_set_lock_state(call: Any) -> None:
-        """Call when setting the lock state."""
-        await spc.set_lock_state(call.data[ATTR_FLAP_ID], call.data[ATTR_LOCK_STATE])
-        await spc.async_update()
-
-    lock_state_service_schema = vol.Schema(
-        {
-            vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(spc.states.keys())),
-            vol.Required(ATTR_LOCK_STATE): vol.All(
-                cv.string,
-                vol.Lower,
-                vol.In(
-                    [
-                        # https://github.com/PyCQA/pylint/issues/2062
-                        # pylint: disable=no-member
-                        LockState.UNLOCKED.name.lower(),
-                        LockState.LOCKED_IN.name.lower(),
-                        LockState.LOCKED_OUT.name.lower(),
-                        LockState.LOCKED_ALL.name.lower(),
-                    ]
-                ),
-            ),
-        }
-    )
-
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_SET_LOCK_STATE,
-        handle_set_lock_state,
-        schema=lock_state_service_schema,
-    )
-
-    return True
+    return await spc.async_setup()
 
 
 class SurePetcareAPI:
     """Define a generic Sure Petcare object."""
 
-    def __init__(self, hass: HomeAssistant, surepy: Surepy) -> None:
+    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, surepy: Surepy) -> None:
         """Initialize the Sure Petcare object."""
+
         self.hass = hass
+        self.config_entry = config_entry
         self.surepy = surepy
         self.states: dict[int, Any] = {}
 
@@ -164,3 +122,65 @@ class SurePetcareAPI:
             await self.surepy.sac.lock_out(flap_id)
         elif state == LockState.LOCKED_ALL.name.lower():
             await self.surepy.sac.lock(flap_id)
+
+    async def async_setup(self) -> bool:
+        """Set up the Sure Petcare integration."""
+
+        hass = self.hass
+
+        print("-------------------------------------------------------------------")
+        print("  🐾 meeowww... to the beta of the surepetcare integration!")
+        print("     code: https://github.com/benleb/surepetcare")
+        print("-------------------------------------------------------------------")
+
+        await self.async_update()
+
+        async_track_time_interval(hass, self.async_update, SCAN_INTERVAL)
+
+        # load platforms
+        # hass.async_create_task(
+        #     hass.helpers.discovery.async_load_platform("binary_sensor", DOMAIN, {}, config)
+        # )
+        # hass.async_create_task(hass.helpers.discovery.async_load_platform("sensor", DOMAIN, {}, config))
+
+        hass.async_add_job(
+            hass.config_entries.async_forward_entry_setup(self.config_entry, "binary_sensor")
+        )
+
+        hass.async_add_job(
+            hass.config_entries.async_forward_entry_setup(self.config_entry, "sensor")
+        )
+
+        async def handle_set_lock_state(call: Any) -> None:
+            """Call when setting the lock state."""
+            await self.set_lock_state(call.data[ATTR_FLAP_ID], call.data[ATTR_LOCK_STATE])
+            await self.async_update()
+
+        lock_state_service_schema = vol.Schema(
+            {
+                vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(self.states.keys())),
+                vol.Required(ATTR_LOCK_STATE): vol.All(
+                    cv.string,
+                    vol.Lower,
+                    vol.In(
+                        [
+                            # https://github.com/PyCQA/pylint/issues/2062
+                            # pylint: disable=no-member
+                            LockState.UNLOCKED.name.lower(),
+                            LockState.LOCKED_IN.name.lower(),
+                            LockState.LOCKED_OUT.name.lower(),
+                            LockState.LOCKED_ALL.name.lower(),
+                        ]
+                    ),
+                ),
+            }
+        )
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_LOCK_STATE,
+            handle_set_lock_state,
+            schema=lock_state_service_schema,
+        )
+
+        return True

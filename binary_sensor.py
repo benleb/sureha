@@ -2,33 +2,39 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
-from pprint import pformat
 
-from surepy.entities import PetLocation, SurepyEntity
-from surepy.entities.pet import Pet as SurePet
-from surepy.enums import EntityType, Location
+from pprint import pformat
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_CONNECTIVITY,
     DEVICE_CLASS_PRESENCE,
     BinarySensorEntity,
 )
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from surepy.entities import PetLocation, SurepyEntity
+from surepy.entities.pet import Pet as SurePet
+from surepy.enums import EntityType, Location
 
 from . import SurePetcareAPI
 from .const import DOMAIN, SPC, TOPIC_UPDATE
+
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_platform(
-    hass: Any, config: dict[str, Any], async_add_entities: Any, discovery_info: Any = None
+    hass: HomeAssistant, config: ConfigEntry, async_add_entities: Any, discovery_info: Any = None
 ) -> None:
-    """Set up Sure PetCare Flaps sensors based on a config entry."""
-    if discovery_info is None:
-        return
+    await async_setup_entry(hass, config, async_add_entities)
+
+
+async def async_setup_entry(
+    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: Any
+) -> None:
+    """Set up config entry Sure PetCare Flaps sensors."""
 
     entities: list[SurepyEntity] = []
 
@@ -36,7 +42,7 @@ async def async_setup_platform(
 
     for surepy_entity in spc.states.values():
 
-        _LOGGER.info("🐾 %s -- %s", surepy_entity.name, surepy_entity.type)
+        # _LOGGER.debug("🐾 adding binary sensors for %s (%s)...", surepy_entity.name, surepy_entity.type)
 
         # connectivity
         if surepy_entity.type in [
@@ -46,11 +52,14 @@ async def async_setup_platform(
             EntityType.FELAQUA,
         ]:
             entities.append(DeviceConnectivity(surepy_entity.id, surepy_entity.type, spc))
+            _LOGGER.debug("🐾 connectivity binary_sensor for %s added...", surepy_entity.name)
 
         if surepy_entity.type == EntityType.PET:
             entities.append(Pet(surepy_entity.id, spc))
+            _LOGGER.debug("🐾 pet binary_sensor for %s added...", surepy_entity.name)
         elif surepy_entity.type == EntityType.HUB:
             entities.append(Hub(surepy_entity.id, spc))
+            _LOGGER.debug("🐾 hub binary_sensor for %s added...", surepy_entity.name)
 
     async_add_entities(entities, True)
 
@@ -110,9 +119,7 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
-        _LOGGER.debug(
-            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
-        )
+        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -201,9 +208,7 @@ class Pet(SurePetcareBinarySensor):
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.location
-        _LOGGER.debug(
-            "🐾 %s updated to: %s", self._surepy_entity.name, pformat(self._state, indent=4)
-        )
+        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
 
 class DeviceConnectivity(SurePetcareBinarySensor):
