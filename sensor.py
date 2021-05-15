@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 
-from pprint import pformat
 from typing import Any
 
 from homeassistant.components.sensor import SensorEntity
@@ -29,6 +28,9 @@ from .const import (
     SURE_BATT_VOLTAGE_LOW,
     TOPIC_UPDATE,
 )
+
+
+PARALLEL_UPDATES = 2
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -133,7 +135,7 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
-        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -158,7 +160,7 @@ class Flap(SurePetcareSensor):
     @property
     def state(self) -> str:
         """Return battery level in percent."""
-        return LockState(self._state["locking"]["mode"]).name.replace("_", " ").title()
+        return LockState(self._state["locking"]["mode"]).name.casefold()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -250,7 +252,7 @@ class FeederBowl(SurePetcareSensor):
         self._surepy_feeder_entity = self._spc.states[self.feeder_id]
         self._surepy_entity = self._spc.states[self.feeder_id].bowls[self.bowl_id]
         self._state = self._surepy_entity.raw_data()
-        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
 
 class Feeder(SurePetcareSensor):
@@ -277,7 +279,7 @@ class Feeder(SurePetcareSensor):
             for bowl_data in lunch_data["weights"]:
                 self._surepy_entity.bowls[bowl_data["index"]]._data = bowl_data
 
-        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
 
 class SureBattery(SurePetcareSensor):
