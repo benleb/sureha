@@ -9,7 +9,7 @@
         "@benleb"
     ],
     "requirements": [
-        "surepy>=0.7.0b6"
+        "surepy>=0.7.0b7"
     ],
     "iot_class": "cloud_polling"
 }

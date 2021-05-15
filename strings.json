@@ -3,12 +3,7 @@
         "step": {
             "user": {
                 "title": "testiiiiing",
-                "data": {
-                    "username": "[%key:common::config_flow::data::username%]",
-                    "password": "[%key:common::config_flow::data::password%]"
-                }
-            },
-            "init": {
+                "description": "Set up your SPC to allow monitoring and control.",
                 "data": {
                     "username": "[%key:common::config_flow::data::username%]",
                     "password": "[%key:common::config_flow::data::password%]"

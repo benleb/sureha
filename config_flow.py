@@ -47,8 +47,8 @@ async def is_valid(hass: core.HomeAssistant, user_input: dict[str, Any]) -> str 
         return None
 
 
-@config_entries.HANDLERS.register(DOMAIN)
-class SurePetcareConfigFlow(config_entries.ConfigFlow):  # type: ignore
+# @config_entries.HANDLERS.register(DOMAIN)
+class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
 
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
@@ -60,36 +60,31 @@ class SurePetcareConfigFlow(config_entries.ConfigFlow):  # type: ignore
 
         return await self.async_step_user(import_info)
 
-    async def async_step_user(self, user_input: dict[str, Any] = {}) -> data_entry_flow.FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
         # Specify items in the order they are to be displayed in the UI
+
+        errors: dict[str, Any] = {}
 
         _LOGGER.info(f"async_step_user(..) called with {user_input = }")
 
-        data_schema = {
-            vol.Required(CONF_USERNAME): str,
-            vol.Required(CONF_PASSWORD): str,
-        }
+        if not user_input:
+            _LOGGER.info(f"no user_input, calling async_show_form(..) with {DATA_SCHEMA = }")
+            return self.async_show_form(step_id="user", data_schema=DATA_SCHEMA, errors=errors)
 
-        if user_input:
+        if token := await is_valid(self.hass, user_input):
 
-            if token := await is_valid(self.hass, user_input):
+            uniq_username = user_input[CONF_USERNAME].casefold()
+            await self.async_set_unique_id(uniq_username, raise_on_progress=False)
 
-                uniq_username = user_input[CONF_USERNAME].casefold()
-                await self.async_set_unique_id(uniq_username, raise_on_progress=False)
-
-                return self.async_create_entry(
-                    title="Sure Petcare",
-                    data={
-                        CONF_USERNAME: user_input[CONF_USERNAME],
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                        CONF_TOKEN: token,
-                    },
-                )
-
-            else:
-
-                return self.async_abort(reason="authentication_failed")
+            return self.async_create_entry(
+                title="Sure Petcare",
+                data={
+                    CONF_USERNAME: user_input[CONF_USERNAME],
+                    CONF_PASSWORD: user_input[CONF_PASSWORD],
+                    CONF_TOKEN: token,
+                },
+            )
 
         else:
 
-            return self.async_show_form(step_id="user", data_schema=vol.Schema(data_schema))
+            return self.async_abort(reason="authentication_failed")

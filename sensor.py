@@ -20,6 +20,7 @@ from surepy.entities import SurepyEntity
 from surepy.entities.devices import Feeder as SureFeeder, FeederBowl as SureFeederBowl
 from surepy.enums import EntityType, LockState
 
+# pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
 from .const import (
     DOMAIN,
@@ -53,7 +54,27 @@ async def async_setup_entry(
 
     for surepy_entity in spc.states.values():
 
-        # _LOGGER.debug("🐾 adding sensors for %s (%s)...", surepy_entity.name, surepy_entity.type)
+        entity = None
+
+        if surepy_entity.type in [
+            EntityType.CAT_FLAP,
+            EntityType.PET_FLAP,
+        ]:
+            entity = Flap(surepy_entity.id, spc)
+            entities.append(entity)
+
+        elif surepy_entity.type == EntityType.FELAQUA:
+            entity = Felaqua(surepy_entity.id, spc)
+            entities.append(entity)
+
+        elif surepy_entity.type == EntityType.FEEDER:
+
+            for bowl in surepy_entity.bowls.values():
+                bowl_entity = FeederBowl(surepy_entity.id, spc, bowl.raw_data())
+                entities.append(bowl_entity)
+
+            entity = Feeder(surepy_entity.id, spc)
+            entities.append(entity)
 
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
@@ -61,26 +82,11 @@ async def async_setup_entry(
             EntityType.FEEDER,
             EntityType.FELAQUA,
         ]:
-            entities.append(SureBattery(surepy_entity.id, spc))
-            _LOGGER.debug("🐾 battery sensor for %s added...", surepy_entity.name)
+            entity = SureBattery(surepy_entity.id, spc)
+            entities.append(entity)
 
-        if surepy_entity.type in [
-            EntityType.CAT_FLAP,
-            EntityType.PET_FLAP,
-        ]:
-            entities.append(Flap(surepy_entity.id, spc))
-            _LOGGER.debug("🐾 flap sensor for %s added...", surepy_entity.name)
-
-        if surepy_entity.type == EntityType.FELAQUA:
-            entities.append(Felaqua(surepy_entity.id, spc))
-            _LOGGER.debug("🐾 felaqua sensor for %s added...", surepy_entity.name)
-
-        if surepy_entity.type == EntityType.FEEDER:
-            entities.append(Feeder(surepy_entity.id, spc))
-            _LOGGER.debug("🐾 feeder sensor for %s added...", surepy_entity.name)
-            for bowl in surepy_entity.bowls.values():
-                entities.append(FeederBowl(surepy_entity.id, spc, bowl.raw_data()))
-                _LOGGER.debug("🐾   feeder bowl added...")
+        if entity:
+            _LOGGER.debug("🐾 %s added...", entity.name)
 
     async_add_entities(entities)
 
@@ -104,7 +110,7 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
     @property
     def name(self) -> str:
         """Return the name of the device if any."""
-        return f"{self._name} "
+        return f"{self._name}"
 
     @property
     def unique_id(self) -> str:
@@ -224,12 +230,17 @@ class FeederBowl(SurePetcareSensor):
         ]  # type:ignore
         self._state: dict[str, Any] = bowl_data
 
-        self._name = self._surepy_entity.name
+        # https://github.com/PyCQA/pylint/issues/2062
+        # pylint: disable=no-member
+        self._name = (
+            f"{EntityType.FEEDER.name.replace('_', ' ').title()} "
+            f"{self._surepy_entity.name.capitalize()}"
+        )
 
-    @property
-    def name(self) -> str:
-        """Return the name of the device if any."""
-        return f"{self._name} "
+    # @property
+    # def name(self) -> str:
+    #     """Return the name of the device if any."""
+    #     return f"{self._name} "
 
     @property
     def unique_id(self) -> str:

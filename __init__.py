@@ -9,7 +9,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_PASSWORD, CONF_SCAN_INTERVAL, CONF_USERNAME
+from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -19,12 +19,10 @@ from surepy import Surepy
 from surepy.enums import LockState
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 
+# pylint: disable=import-error
 from .const import (
     ATTR_FLAP_ID,
     ATTR_LOCK_STATE,
-    CONF_FEEDERS,
-    CONF_FLAPS,
-    CONF_PETS,
     DOMAIN,
     SERVICE_SET_LOCK_STATE,
     SPC,
@@ -42,18 +40,7 @@ CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             vol.All(
-                {
-                    vol.Required(CONF_USERNAME): cv.string,
-                    vol.Required(CONF_PASSWORD): cv.string,
-                    vol.Optional(CONF_FEEDERS): vol.All(cv.ensure_list, [cv.positive_int]),
-                    vol.Optional(CONF_FLAPS): vol.All(cv.ensure_list, [cv.positive_int]),
-                    vol.Optional(CONF_PETS): vol.All(cv.ensure_list, [cv.positive_int]),
-                    vol.Optional(CONF_SCAN_INTERVAL): cv.time_period,
-                },
-                cv.deprecated(CONF_FEEDERS),
-                cv.deprecated(CONF_FLAPS),
-                cv.deprecated(CONF_PETS),
-                cv.deprecated(CONF_SCAN_INTERVAL),
+                {vol.Required(CONF_USERNAME): cv.string, vol.Required(CONF_PASSWORD): cv.string}
             )
         )
     },
@@ -70,7 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         surepy = Surepy(
             entry.data[CONF_USERNAME],
             entry.data[CONF_PASSWORD],
-            auth_token=None,
+            auth_token=entry.data[CONF_TOKEN] if CONF_TOKEN in entry.data else None,
             api_timeout=SURE_API_TIMEOUT,
             session=async_get_clientsession(hass),
         )
@@ -103,7 +90,7 @@ class SurePetcareAPI:
 
         try:
             self.states = await self.surepy.get_entities(refresh=True)
-            _LOGGER.debug("🐾 | successfully updated states for %d entities", len(self.states))
+            _LOGGER.debug("🐾 successfully updated states of %d entities", len(self.states))
         except SurePetcareError as error:
             _LOGGER.error("Unable to fetch data: %s", error)
 
@@ -126,23 +113,23 @@ class SurePetcareAPI:
     async def async_setup(self) -> bool:
         """Set up the Sure Petcare integration."""
 
-        hass = self.hass
-
-        _LOGGER.info("-------------------------------------------------------------------")
-        _LOGGER.info("  🐾 meeowww... to the beta of the surepetcare integration!")
+        _LOGGER.info("")
+        _LOGGER.info("--------------------------------------------------------------")
+        _LOGGER.info("  🐾 meeowww...! to the beta of the surepetcare integration!")
         _LOGGER.info("     code: https://github.com/benleb/surepetcare")
-        _LOGGER.info("-------------------------------------------------------------------")
+        _LOGGER.info("--------------------------------------------------------------")
+        _LOGGER.info("")
 
         await self.async_update()
 
-        async_track_time_interval(hass, self.async_update, SCAN_INTERVAL)
+        async_track_time_interval(self.hass, self.async_update, SCAN_INTERVAL)
 
-        hass.async_add_job(
-            hass.config_entries.async_forward_entry_setup(self.config_entry, "binary_sensor")
+        self.hass.async_add_job(
+            self.hass.config_entries.async_forward_entry_setup(self.config_entry, "binary_sensor")
         )
 
-        hass.async_add_job(
-            hass.config_entries.async_forward_entry_setup(self.config_entry, "sensor")
+        self.hass.async_add_job(
+            self.hass.config_entries.async_forward_entry_setup(self.config_entry, "sensor")
         )
 
         async def handle_set_lock_state(call: Any) -> None:
@@ -170,7 +157,7 @@ class SurePetcareAPI:
             }
         )
 
-        hass.services.async_register(
+        self.hass.services.async_register(
             DOMAIN,
             SERVICE_SET_LOCK_STATE,
             handle_set_lock_state,
