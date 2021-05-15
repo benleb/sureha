@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 
-from pprint import pformat
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -20,6 +19,9 @@ from surepy.enums import EntityType, Location
 
 from . import SurePetcareAPI
 from .const import DOMAIN, SPC, TOPIC_UPDATE
+
+
+PARALLEL_UPDATES = 2
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,7 +44,7 @@ async def async_setup_entry(
 
     for surepy_entity in spc.states.values():
 
-        # _LOGGER.debug("🐾 adding binary sensors for %s (%s)...", surepy_entity.name, surepy_entity.type)
+        # _LOGGER.debug("🐾 adding b-sensors for %s (%s)...", surepy_entity.name, surepy_entity.type)
 
         # connectivity
         if surepy_entity.type in [
@@ -119,7 +121,7 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
-        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -208,7 +210,7 @@ class Pet(SurePetcareBinarySensor):
         """Get the latest data and update the state."""
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.location
-        _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
 
 
 class DeviceConnectivity(SurePetcareBinarySensor):

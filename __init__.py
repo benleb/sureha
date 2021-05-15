@@ -128,20 +128,14 @@ class SurePetcareAPI:
 
         hass = self.hass
 
-        print("-------------------------------------------------------------------")
-        print("  🐾 meeowww... to the beta of the surepetcare integration!")
-        print("     code: https://github.com/benleb/surepetcare")
-        print("-------------------------------------------------------------------")
+        _LOGGER.info("-------------------------------------------------------------------")
+        _LOGGER.info("  🐾 meeowww... to the beta of the surepetcare integration!")
+        _LOGGER.info("     code: https://github.com/benleb/surepetcare")
+        _LOGGER.info("-------------------------------------------------------------------")
 
         await self.async_update()
 
         async_track_time_interval(hass, self.async_update, SCAN_INTERVAL)
-
-        # load platforms
-        # hass.async_create_task(
-        #     hass.helpers.discovery.async_load_platform("binary_sensor", DOMAIN, {}, config)
-        # )
-        # hass.async_create_task(hass.helpers.discovery.async_load_platform("sensor", DOMAIN, {}, config))
 
         hass.async_add_job(
             hass.config_entries.async_forward_entry_setup(self.config_entry, "binary_sensor")
