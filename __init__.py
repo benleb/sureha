@@ -114,10 +114,10 @@ class SurePetcareAPI:
         """Set up the Sure Petcare integration."""
 
         _LOGGER.info("")
-        _LOGGER.info("--------------------------------------------------------------")
-        _LOGGER.info("  🐾 meeowww...! to the beta of the surepetcare integration!")
-        _LOGGER.info("     code: https://github.com/benleb/surepetcare")
-        _LOGGER.info("--------------------------------------------------------------")
+        _LOGGER.info("----------------------------------------------------------")
+        _LOGGER.info(" 🐾 meeowww..! to the beta of the surepetcare integration!")
+        _LOGGER.info("    code: https://github.com/benleb/surepetcare")
+        _LOGGER.info("----------------------------------------------------------")
         _LOGGER.info("")
 
         await self.async_update()
