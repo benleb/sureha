@@ -261,6 +261,10 @@ class FeederBowl(SurePetcareSensor):
         return int(self._surepy_entity.weight)
 
     @property
+    def icon(self) -> str:
+        return "mdi:bowl"
+
+    @property
     def unit_of_measurement(self) -> str:
         """Return the unit of measurement."""
         return str(MASS_GRAMS)
