@@ -180,6 +180,10 @@ class Flap(SurePetcareSensor):
 
         return attributes
 
+    @property
+    def entity_picture(self) -> str | None:
+        return self._surepy_entity.icon
+
 
 class Felaqua(SurePetcareSensor):
     """Sure Petcare Felaqua."""
@@ -194,6 +198,10 @@ class Felaqua(SurePetcareSensor):
     def unit_of_measurement(self) -> str:
         """Return the unit of measurement."""
         return str(VOLUME_MILLILITERS)
+
+    @property
+    def entity_picture(self) -> str | None:
+        return self._surepy_entity.icon
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -279,6 +287,10 @@ class Feeder(SurePetcareSensor):
     def unit_of_measurement(self) -> str:
         """Return the unit of measurement."""
         return str(MASS_GRAMS)
+
+    @property
+    def entity_picture(self) -> str | None:
+        return self._surepy_entity.icon
 
     @callback  # type: ignore
     def _async_update(self) -> None:
