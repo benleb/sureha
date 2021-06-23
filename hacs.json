@@ -1,6 +1,6 @@
 {
-    "name": "Sure Petcare (beta)",
-    "documentation": "https://www.home-assistant.io/integrations/surepetcare",
+    "name": "SureHA",
+    "documentation": "https://github.com/benleb/sureha",
     "content_in_root": true,
     "render_readme": true,
     "domains": [

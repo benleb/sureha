@@ -1,5 +1,5 @@
 """Constants for the Sure Petcare component."""
-DOMAIN = "surepetcarebeta"
+DOMAIN = "sureha"
 
 SPC = "spc"
 
