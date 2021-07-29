@@ -1,11 +1,13 @@
 """The surepetcare integration."""
 from __future__ import annotations
 
-import logging
-
 from datetime import timedelta
+import logging
 from typing import Any
 
+from surepy import Surepy
+from surepy.enums import LockState
+from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,9 +17,6 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_time_interval
-from surepy import Surepy
-from surepy.enums import LockState
-from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 
 # pylint: disable=import-error
 from .const import (
@@ -30,7 +29,6 @@ from .const import (
     TOPIC_UPDATE,
 )
 
-
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = ["binary_sensor", "sensor"]
@@ -40,7 +38,10 @@ CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             vol.All(
-                {vol.Required(CONF_USERNAME): cv.string, vol.Required(CONF_PASSWORD): cv.string}
+                {
+                    vol.Required(CONF_USERNAME): cv.string,
+                    vol.Required(CONF_PASSWORD): cv.string,
+                }
             )
         )
     },
@@ -77,7 +78,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class SurePetcareAPI:
     """Define a generic Sure Petcare object."""
 
-    def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry, surepy: Surepy) -> None:
+    def __init__(
+        self, hass: HomeAssistant, config_entry: ConfigEntry, surepy: Surepy
+    ) -> None:
         """Initialize the Sure Petcare object."""
 
         self.hass = hass
@@ -90,7 +93,10 @@ class SurePetcareAPI:
 
         try:
             self.states = await self.surepy.get_entities(refresh=True)
-            _LOGGER.debug("🐾 successfully updated states of %d entities", len(self.states))
+            _LOGGER.debug(
+                "\x1b[38;2;255;26;102m·\x1b[0m🐾 successfully updated states of %d entities",
+                len(self.states),
+            )
         except SurePetcareError as error:
             _LOGGER.error("Unable to fetch data: %s", error)
 
@@ -114,10 +120,10 @@ class SurePetcareAPI:
         """Set up the Sure Petcare integration."""
 
         _LOGGER.info("")
-        _LOGGER.info("----------------------------------------------------------")
-        _LOGGER.info(" 🐾 meeowww..! to the SureHA integration!")
-        _LOGGER.info("    code: https://github.com/benleb/sureha")
-        _LOGGER.info("----------------------------------------------------------")
+        _LOGGER.info(" \x1b[38;2;255;26;102m·\x1b[0m" * 30)
+        _LOGGER.info("  🐾   meeowww..! to the SureHA integration!")
+        _LOGGER.info("  🐾     code & issues: https://github.com/benleb/sureha")
+        _LOGGER.info(" \x1b[38;2;255;26;102m·\x1b[0m" * 30)
         _LOGGER.info("")
 
         await self.async_update()
@@ -125,21 +131,29 @@ class SurePetcareAPI:
         async_track_time_interval(self.hass, self.async_update, SCAN_INTERVAL)
 
         self.hass.async_add_job(
-            self.hass.config_entries.async_forward_entry_setup(self.config_entry, "binary_sensor")
+            self.hass.config_entries.async_forward_entry_setup(
+                self.config_entry, "binary_sensor"
+            )
         )
 
         self.hass.async_add_job(
-            self.hass.config_entries.async_forward_entry_setup(self.config_entry, "sensor")
+            self.hass.config_entries.async_forward_entry_setup(
+                self.config_entry, "sensor"
+            )
         )
 
         async def handle_set_lock_state(call: Any) -> None:
             """Call when setting the lock state."""
-            await self.set_lock_state(call.data[ATTR_FLAP_ID], call.data[ATTR_LOCK_STATE])
+            await self.set_lock_state(
+                call.data[ATTR_FLAP_ID], call.data[ATTR_LOCK_STATE]
+            )
             await self.async_update()
 
         lock_state_service_schema = vol.Schema(
             {
-                vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(self.states.keys())),
+                vol.Required(ATTR_FLAP_ID): vol.All(
+                    cv.positive_int, vol.In(self.states.keys())
+                ),
                 vol.Required(ATTR_LOCK_STATE): vol.All(
                     cv.string,
                     vol.Lower,

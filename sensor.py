@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import logging
-
 from typing import Any
+
+from surepy.entities import SurepyEntity
+from surepy.entities.devices import Feeder as SureFeeder, FeederBowl as SureFeederBowl
+from surepy.enums import EntityType, LockState
 
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
@@ -16,20 +19,10 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from surepy.entities import SurepyEntity
-from surepy.entities.devices import Feeder as SureFeeder, FeederBowl as SureFeederBowl
-from surepy.enums import EntityType, LockState
 
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
-from .const import (
-    DOMAIN,
-    SPC,
-    SURE_BATT_VOLTAGE_DIFF,
-    SURE_BATT_VOLTAGE_LOW,
-    TOPIC_UPDATE,
-)
-
+from .const import DOMAIN, SPC, SURE_MANUFACTURER, TOPIC_UPDATE
 
 PARALLEL_UPDATES = 2
 
@@ -38,7 +31,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_platform(
-    hass: HomeAssistant, config: ConfigEntry, async_add_entities: Any, discovery_info: Any = None
+    hass: HomeAssistant,
+    config: ConfigEntry,
+    async_add_entities: Any,
+    discovery_info: Any = None,
 ) -> None:
     await async_setup_entry(hass, config, async_add_entities)
 
@@ -86,7 +82,7 @@ async def async_setup_entry(
             entities.append(entity)
 
         if entity:
-            _LOGGER.debug("🐾 %s added...", entity.name)
+            _LOGGER.debug("\x1b[38;2;255;26;102m·\x1b[0m🐾 %s added...", entity.name)
 
     async_add_entities(entities)
 
@@ -128,6 +124,37 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
         return False
 
     @property
+    def device_info(self):
+
+        device = {}
+
+        try:
+            device = {
+                "identifiers": {(DOMAIN, self._id)},
+                "name": self._surepy_entity.name.title(),
+                "manufacturer": SURE_MANUFACTURER,
+                "model": self._surepy_entity.type.name.replace("_", " ").title(),
+            }
+
+            if self._state:
+                versions = self._state.get("version", {})
+
+                if dev_fw_version := versions.get("device", {}).get("firmware"):
+                    device["sw_version"] = dev_fw_version
+
+                if (lcd_version := versions.get("lcd", {})) and (
+                    rf_version := versions.get("rf", {})
+                ):
+                    device[
+                        "sw_version"
+                    ] = f"{lcd_version['version']} | {rf_version['version']}"
+
+        except AttributeError:
+            pass
+
+        return device
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return the state attributes of the device."""
         attributes = None
@@ -146,7 +173,9 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
 
-        self.async_on_remove(async_dispatcher_connect(self.hass, TOPIC_UPDATE, self._async_update))
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, TOPIC_UPDATE, self._async_update)
+        )
 
         @callback  # type: ignore
         def update() -> None:
@@ -209,7 +238,9 @@ class Felaqua(SurePetcareSensor):
         attributes = None
 
         attrs: dict[str, Any] = self._surepy_entity.raw_data()
-        weights: list[dict[str, int | float | str]] = attrs.get("drink", {}).get("weights")
+        weights: list[dict[str, int | float | str]] = attrs.get("drink", {}).get(
+            "weights"
+        )
 
         for weight in weights:
             attr_key = f"weight_{weight['index']}"
@@ -253,7 +284,9 @@ class FeederBowl(SurePetcareSensor):
     @property
     def unique_id(self) -> str:
         """Return an unique ID."""
-        return f"{self._surepy_feeder_entity.household_id}-{self.feeder_id}-{self.bowl_id}"
+        return (
+            f"{self._surepy_feeder_entity.household_id}-{self.feeder_id}-{self.bowl_id}"
+        )
 
     @property
     def state(self) -> int | None:
@@ -320,15 +353,7 @@ class SureBattery(SurePetcareSensor):
     @property
     def state(self) -> int | None:
         """Return battery level in percent."""
-        battery_percent: int | None
-        try:
-            per_battery_voltage = self._state["battery"] / 4
-            voltage_diff = per_battery_voltage - SURE_BATT_VOLTAGE_LOW
-            battery_percent = min(int(voltage_diff / SURE_BATT_VOLTAGE_DIFF * 100), 100)
-        except (KeyError, TypeError):
-            battery_percent = None
-
-        return battery_percent
+        return self._surepy_entity.battery_level
 
     @property
     def unique_id(self) -> str:

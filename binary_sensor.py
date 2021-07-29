@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import logging
-
 from typing import Any
+
+from surepy.entities import PetLocation, SurepyEntity
+from surepy.entities.pet import Pet as SurePet
+from surepy.enums import EntityType, Location
 
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_CONNECTIVITY,
@@ -13,14 +16,10 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from surepy.entities import PetLocation, SurepyEntity
-from surepy.entities.pet import Pet as SurePet
-from surepy.enums import EntityType, Location
 
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
-from .const import DOMAIN, SPC, TOPIC_UPDATE
-
+from .const import DOMAIN, SPC, SURE_MANUFACTURER, TOPIC_UPDATE
 
 PARALLEL_UPDATES = 2
 
@@ -29,7 +28,10 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_platform(
-    hass: HomeAssistant, config: ConfigEntry, async_add_entities: Any, discovery_info: Any = None
+    hass: HomeAssistant,
+    config: ConfigEntry,
+    async_add_entities: Any,
+    discovery_info: Any = None,
 ) -> None:
     await async_setup_entry(hass, config, async_add_entities)
 
@@ -56,7 +58,7 @@ async def async_setup_entry(
             entities.append(entity)
 
         # connectivity
-        if surepy_entity.type in [
+        elif surepy_entity.type in [
             EntityType.CAT_FLAP,
             EntityType.PET_FLAP,
             EntityType.FEEDER,
@@ -66,7 +68,7 @@ async def async_setup_entry(
             entities.append(entity)
 
         if entity:
-            _LOGGER.debug("🐾 %s added...", entity.name)
+            _LOGGER.debug("\x1b[38;2;255;26;102m·\x1b[0m🐾 %s added...", entity.name)
 
     async_add_entities(entities, True)
 
@@ -93,7 +95,11 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
 
         # cover special case where a device has no name set
         type_name = self._surepy_entity.type.name.replace("_", " ").title()
-        name = self._surepy_entity.name if self._surepy_entity.name else f"Unnamed {type_name}"
+        name = (
+            self._surepy_entity.name
+            if self._surepy_entity.name
+            else f"Unnamed {type_name}"
+        )
         self._name = f"{type_name} {name}"
 
     @property
@@ -112,6 +118,37 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
         return None if not self._device_class else self._device_class
 
     @property
+    def device_info(self):
+
+        device = {}
+
+        try:
+            device = {
+                "identifiers": {(DOMAIN, self._id)},
+                "name": self._surepy_entity.name.title(),
+                "manufacturer": SURE_MANUFACTURER,
+                "model": self._surepy_entity.type.name.replace("_", " ").title(),
+            }
+
+            if self._state:
+                versions = self._state.get("version", {})
+
+                if dev_fw_version := versions.get("device", {}).get("firmware"):
+                    device["sw_version"] = dev_fw_version
+
+                if (lcd_version := versions.get("lcd", {})) and (
+                    rf_version := versions.get("rf", {})
+                ):
+                    device[
+                        "sw_version"
+                    ] = f"{lcd_version['version']} | {rf_version['version']}"
+
+        except AttributeError:
+            pass
+
+        return device
+
+    @property
     def unique_id(self) -> str:
         """Return an unique ID."""
         return f"{self._surepy_entity.household_id}-{self._id}"
@@ -126,7 +163,9 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
 
-        self.async_on_remove(async_dispatcher_connect(self.hass, TOPIC_UPDATE, self._async_update))
+        self.async_on_remove(
+            async_dispatcher_connect(self.hass, TOPIC_UPDATE, self._async_update)
+        )
 
         @callback  # type: ignore
         def update() -> None:
@@ -164,7 +203,9 @@ class Hub(SurePetcareBinarySensor):
         if self._surepy_entity.raw_data():
             attributes = {
                 "led_mode": int(self._surepy_entity.raw_data()["status"]["led_mode"]),
-                "pairing_mode": bool(self._surepy_entity.raw_data()["status"]["pairing_mode"]),
+                "pairing_mode": bool(
+                    self._surepy_entity.raw_data()["status"]["pairing_mode"]
+                ),
             }
 
         return attributes
@@ -202,6 +243,10 @@ class Pet(SurePetcareBinarySensor):
         return attributes
 
     @property
+    def device_info(self):
+        pass
+
+    @property
     def entity_picture(self) -> str | None:
         return self._surepy_entity.photo_url
 
@@ -224,6 +269,31 @@ class DeviceConnectivity(SurePetcareBinarySensor):
     ) -> None:
         """Initialize a Sure Petcare Device."""
         super().__init__(_id, spc, DEVICE_CLASS_CONNECTIVITY)  # , sure_type)
+
+    # @property
+    # def device_info(self):
+
+    #     device = {
+    #         "identifiers": {(DOMAIN, self._id)},
+    #         "name": self._surepy_entity.name.title(),
+    #         "manufacturer": SURE_MANUFACTURER,
+    #         "model": self._surepy_entity.type.name.capitalize(),
+    #     }
+
+    #     if self._state:
+    #         versions = self._state.get("version", {})
+
+    #         if dev_fw_version := versions.get("device", {}).get("firmware"):
+    #             device["sw_version"] = dev_fw_version
+
+    #         if (lcd_version := versions.get("lcd", {})) and (
+    #             rf_version := versions.get("rf", {})
+    #         ):
+    #             device[
+    #                 "sw_version"
+    #             ] = f"{lcd_version['version']} | {rf_version['version']}"
+
+    #     return device
 
     @property
     def name(self) -> str:

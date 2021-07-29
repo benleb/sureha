@@ -1,29 +1,28 @@
-"""Adds config flow for Petcare integration."""
+"""Sure Petcare config flow."""
 from __future__ import annotations
 
 import logging
-
 from typing import Any
 
+from surepy import Surepy
+from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
 from homeassistant import config_entries, core, data_entry_flow
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from surepy import Surepy
-from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 
 from .const import DOMAIN, SURE_API_TIMEOUT
 
-
-# from .petcare import Petcare
-
 _LOGGER = logging.getLogger(__name__)
 
-DATA_SCHEMA = vol.Schema({vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str})
+DATA_SCHEMA = vol.Schema(
+    {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str}
+)
 
 
 async def is_valid(hass: core.HomeAssistant, user_input: dict[str, Any]) -> str | None:
+    """Check if we can log in with the supplied credentials."""
 
     _LOGGER.info(f"is_valid(..) called with {user_input = }")
 
@@ -47,29 +46,42 @@ async def is_valid(hass: core.HomeAssistant, user_input: dict[str, Any]) -> str 
         return None
 
 
-# @config_entries.HANDLERS.register(DOMAIN)
 class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore
+    """Implementation of the Sure Petcare config flow."""
 
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
-    async def async_step_import(self, import_info: dict[str, Any]) -> data_entry_flow.FlowResult:
-        """set up entry from configuration.yaml file."""
+    async def async_step_import(
+        self, import_info: dict[str, Any]
+    ) -> data_entry_flow.FlowResult:
+        """Set up entry from configuration.yaml file."""
 
         _LOGGER.info(f"async_step_import(..) called with {import_info = }")
 
         return await self.async_step_user(import_info)
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
-        # Specify items in the order they are to be displayed in the UI
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> data_entry_flow.FlowResult:
+        """Handle a flow start."""
 
         errors: dict[str, Any] = {}
 
         _LOGGER.info(f"async_step_user(..) called with {user_input = }")
 
         if not user_input:
-            _LOGGER.info(f"no user_input, calling async_show_form(..) with {DATA_SCHEMA = }")
-            return self.async_show_form(step_id="user", data_schema=DATA_SCHEMA, errors=errors)
+            data_schema = {
+                vol.Required("username"): str,
+                vol.Required("password"): str,
+            }
+
+            _LOGGER.info(
+                f"no user_input, calling async_show_form(..) with {data_schema = }"
+            )
+            return self.async_show_form(
+                step_id="user", data_schema=vol.Schema(data_schema), errors=errors
+            )
 
         if token := await is_valid(self.hass, user_input):
 
