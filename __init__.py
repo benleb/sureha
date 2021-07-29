@@ -115,8 +115,8 @@ class SurePetcareAPI:
 
         _LOGGER.info("")
         _LOGGER.info("----------------------------------------------------------")
-        _LOGGER.info(" 🐾 meeowww..! to the beta of the surepetcare integration!")
-        _LOGGER.info("    code: https://github.com/benleb/surepetcare")
+        _LOGGER.info(" 🐾 meeowww..! to the SureHA integration!")
+        _LOGGER.info("    code: https://github.com/benleb/sureha")
         _LOGGER.info("----------------------------------------------------------")
         _LOGGER.info("")
 
