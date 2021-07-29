@@ -2,7 +2,9 @@
 
 ## Upgrade *surepetcarebeta* to *sureha*
 
-Do a backup of your HA first. Its probably not needed but a backup is never a bad idea ;)  
+- Do a backup of your HA first. Its probably not needed but a backup is never a bad idea ;)  
+- The cleanest way will be to delete the *surepetcarebeta* integration completely and handle *sureha* completely independent. It will create the same entity/unique ids as before so your automations and graphs should not be affected.
+- ❗️ The service name changed from `sureha.set_lock_state` to `sureha.set_lock_state`. Please change this in your automations and similar. Thanks to @xbmcnut for pointing to this.
 The cleanest way will be to delete the *surepetcarebeta* integration completely and handle *sureha* completely independent. It will create the same entity/unique ids as before so your automations and graphs should not be affected.
 
 ## enable the debug logging in `configuration.yaml` if something does not work as expected
