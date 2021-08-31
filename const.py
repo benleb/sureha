@@ -3,10 +3,6 @@ DOMAIN = "sureha"
 
 SPC = "spc"
 
-CONF_FEEDERS = "feeders"
-CONF_FLAPS = "flaps"
-CONF_PETS = "pets"
-
 # platforms
 TOPIC_UPDATE = f"{DOMAIN}_data_update"
 
@@ -16,9 +12,9 @@ SURE_API_TIMEOUT = 60
 # device info
 SURE_MANUFACTURER = "Sure Petcare"
 
-# flap
-SURE_BATT_VOLTAGE_FULL = 1.6  # voltage
-SURE_BATT_VOLTAGE_LOW = 1.25  # voltage
+# pet door c-cell battery voltage
+SURE_BATT_VOLTAGE_FULL = 1.6
+SURE_BATT_VOLTAGE_LOW = 1.25
 SURE_BATT_VOLTAGE_DIFF = SURE_BATT_VOLTAGE_FULL - SURE_BATT_VOLTAGE_LOW
 
 # lock state service

@@ -4,10 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from surepy.entities import SurepyEntity
-from surepy.entities.devices import Feeder as SureFeeder, FeederBowl as SureFeederBowl
-from surepy.enums import EntityType, LockState
-
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
@@ -19,6 +15,15 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from surepy.entities import SurepyEntity
+from surepy.entities.devices import (
+    Feeder as SureFeeder,
+    FeederBowl as SureFeederBowl,
+    Felaqua as SureFelaqua,
+    Flap as SureFlap,
+    SurepyDevice,
+)
+from surepy.enums import EntityType, LockState
 
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
@@ -36,6 +41,7 @@ async def async_setup_platform(
     async_add_entities: Any,
     discovery_info: Any = None,
 ) -> None:
+    """Set up Sure PetCare sensor platform."""
     await async_setup_entry(hass, config, async_add_entities)
 
 
@@ -44,33 +50,27 @@ async def async_setup_entry(
 ) -> None:
     """Set up config entry Sure PetCare Flaps sensors."""
 
-    entities: list[SurepyEntity] = []
+    entities: list[Flap | Felaqua | Feeder | FeederBowl | SureBattery] = []
 
     spc: SurePetcareAPI = hass.data[DOMAIN][SPC]
 
     for surepy_entity in spc.states.values():
 
-        entity = None
-
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
             EntityType.PET_FLAP,
         ]:
-            entity = Flap(surepy_entity.id, spc)
-            entities.append(entity)
+            entities.append(Flap(surepy_entity.id, spc))
 
         elif surepy_entity.type == EntityType.FELAQUA:
-            entity = Felaqua(surepy_entity.id, spc)
-            entities.append(entity)
+            entities.append(Felaqua(surepy_entity.id, spc))
 
         elif surepy_entity.type == EntityType.FEEDER:
 
             for bowl in surepy_entity.bowls.values():
-                bowl_entity = FeederBowl(surepy_entity.id, spc, bowl.raw_data())
-                entities.append(bowl_entity)
+                entities.append(FeederBowl(surepy_entity.id, spc, bowl.raw_data()))
 
-            entity = Feeder(surepy_entity.id, spc)
-            entities.append(entity)
+            entities.append(Feeder(surepy_entity.id, spc))
 
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
@@ -78,17 +78,15 @@ async def async_setup_entry(
             EntityType.FEEDER,
             EntityType.FELAQUA,
         ]:
-            entity = SureBattery(surepy_entity.id, spc)
-            entities.append(entity)
-
-        if entity:
-            _LOGGER.debug("\x1b[38;2;255;26;102m·\x1b[0m🐾 %s added...", entity.name)
+            entities.append(SureBattery(surepy_entity.id, spc))
 
     async_add_entities(entities)
 
 
 class SurePetcareSensor(SensorEntity):  # type: ignore
     """A binary sensor implementation for Sure Petcare Entities."""
+
+    _attr_should_poll = False
 
     def __init__(self, _id: int, spc: SurePetcareAPI):
         """Initialize a Sure Petcare sensor."""
@@ -154,21 +152,15 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
 
         return device
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return the state attributes of the device."""
-        attributes = None
-        if self._state:
-            attributes = {**self._surepy_entity.raw_data()}
-
-        return attributes
-
-    @callback  # type: ignore
+    @callback
     def _async_update(self) -> None:
         """Get the latest data and update the state."""
+
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
-        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        _LOGGER.debug(
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!", self._surepy_entity.name
+        )
 
     async def async_added_to_hass(self) -> None:
         """Register callbacks."""
@@ -177,11 +169,12 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
             async_dispatcher_connect(self.hass, TOPIC_UPDATE, self._async_update)
         )
 
-        @callback  # type: ignore
+        @callback
         def update() -> None:
             """Update the state."""
             self.async_schedule_update_ha_state(True)
 
+        # pylint: disable=attribute-defined-outside-init
         self._async_unsub_dispatcher_connect = async_dispatcher_connect(
             self.hass, TOPIC_UPDATE, update
         )
@@ -256,6 +249,7 @@ class FeederBowl(SurePetcareSensor):
 
     def __init__(self, _id: int, spc: SurePetcareAPI, bowl_data: dict[str, int | str]):
         """Initialize a Sure Petcare sensor."""
+        super().__init__(_id, spc)
 
         self.feeder_id = _id
         self.bowl_id = int(bowl_data["index"])
@@ -293,26 +287,23 @@ class FeederBowl(SurePetcareSensor):
         """Return the remaining water."""
         return int(self._surepy_entity.weight)
 
-    @property
-    def icon(self) -> str:
-        return "mdi:bowl"
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return str(MASS_GRAMS)
-
-    @callback  # type: ignore
+    @callback
     def _async_update(self) -> None:
         """Get the latest data and update the state."""
+
         self._surepy_feeder_entity = self._spc.states[self.feeder_id]
         self._surepy_entity = self._spc.states[self.feeder_id].bowls[self.bowl_id]
         self._state = self._surepy_entity.raw_data()
-        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+
+        _LOGGER.debug(
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!",
+            self._surepy_entity.name.capitalize(),
+        )
 
 
 class Feeder(SurePetcareSensor):
-    """Sure Petcare Felaqua."""
+    """Sure Petcare Feeder."""
+
 
     @property
     def state(self) -> int | None:
@@ -329,17 +320,24 @@ class Feeder(SurePetcareSensor):
     def entity_picture(self) -> str | None:
         return self._surepy_entity.icon
 
-    @callback  # type: ignore
+    @callback
     def _async_update(self) -> None:
         """Get the latest data and update the state."""
-        self._surepy_entity = self._spc.states[self._id]
+
+        self._surepy_entity: SureFeeder = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
 
         if lunch_data := self._surepy_entity.raw_data().get("lunch"):
             for bowl_data in lunch_data["weights"]:
+
+                # this should be fixed in the library
+                # pylint: disable=protected-access
                 self._surepy_entity.bowls[bowl_data["index"]]._data = bowl_data
 
-        # _LOGGER.debug("🐾 %s updated", self._surepy_entity.name)
+        _LOGGER.debug(
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!",
+            self._surepy_entity.name.capitalize(),
+        )
 
 
 class SureBattery(SurePetcareSensor):

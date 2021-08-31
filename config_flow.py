@@ -4,14 +4,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from homeassistant import config_entries, core, data_entry_flow
+from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from surepy import Surepy
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
-from homeassistant import config_entries, core, data_entry_flow
-from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
-
+# pylint: disable=relative-beyond-top-level
 from .const import DOMAIN, SURE_API_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,8 +23,6 @@ DATA_SCHEMA = vol.Schema(
 
 async def is_valid(hass: core.HomeAssistant, user_input: dict[str, Any]) -> str | None:
     """Check if we can log in with the supplied credentials."""
-
-    _LOGGER.info(f"is_valid(..) called with {user_input = }")
 
     try:
         surepy = Surepy(
@@ -57,8 +55,6 @@ class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
     ) -> data_entry_flow.FlowResult:
         """Set up entry from configuration.yaml file."""
 
-        _LOGGER.info(f"async_step_import(..) called with {import_info = }")
-
         return await self.async_step_user(import_info)
 
     async def async_step_user(
@@ -68,17 +64,12 @@ class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
 
         errors: dict[str, Any] = {}
 
-        _LOGGER.info(f"async_step_user(..) called with {user_input = }")
-
         if not user_input:
             data_schema = {
                 vol.Required("username"): str,
                 vol.Required("password"): str,
             }
 
-            _LOGGER.info(
-                f"no user_input, calling async_show_form(..) with {data_schema = }"
-            )
             return self.async_show_form(
                 step_id="user", data_schema=vol.Schema(data_schema), errors=errors
             )
@@ -97,6 +88,4 @@ class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
                 },
             )
 
-        else:
-
-            return self.async_abort(reason="authentication_failed")
+        return self.async_abort(reason="authentication_failed")
