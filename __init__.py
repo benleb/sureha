@@ -57,6 +57,7 @@ CATS = [
     "(≗ᆽ ≗)ﾉ",
 ]
 
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up."""
 
@@ -158,6 +159,12 @@ class SurePetcareAPI:
                 self.config_entry, "sensor"
             )
         )
+
+        # self.hass.async_add_job(
+        #     self.hass.config_entries.async_forward_entry_setup(  # type: ignore
+        #         self.config_entry, "device_tracker"
+        #     )
+        # )
 
         async def handle_set_lock_state(call: Any) -> None:
             """Call when setting the lock state."""
