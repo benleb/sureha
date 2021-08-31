@@ -95,31 +95,19 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
         self._spc: SurePetcareAPI = spc
 
         self._surepy_entity: SurepyEntity = self._spc.states[_id]
-        self._state: dict[str, Any] = {}
-        self._name = (
-            f"{self._surepy_entity.type.name.replace('_', ' ').title()} "
-            f"{self._surepy_entity.name.capitalize()}"
+        self._state: dict[str, Any] = self._surepy_entity.raw_data()["status"]
+
+        self._attr_available = bool(self._state)
+        self._attr_unique_id = f"{self._surepy_entity.household_id}-{self._id}"
+
+        self._attr_extra_state_attributes = (
+            {**self._surepy_entity.raw_data()} if self._state else {}
         )
 
-    @property
-    def name(self) -> str:
-        """Return the name of the device if any."""
-        return f"{self._name}"
-
-    @property
-    def unique_id(self) -> str:
-        """Return an unique ID."""
-        return f"{self._surepy_entity.household_id}-{self._id}"
-
-    @property
-    def available(self) -> bool:
-        """Return true if entity is available."""
-        return bool(self._state)
-
-    @property
-    def should_poll(self) -> bool:
-        """Return true."""
-        return False
+        self._attr_name: str = (
+            f"{self._surepy_entity.type.name.replace('_', ' ').title()} "
+            f"{self._surepy_entity.name.capitalize()}"  # type: ignore
+        )
 
     @property
     def device_info(self):
@@ -191,36 +179,57 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
 class Flap(SurePetcareSensor):
     """Sure Petcare Flap."""
 
+    def __init__(self, _id: int, spc: SurePetcareAPI) -> None:
+        super().__init__(_id, spc)
+
+        self._surepy_entity: SureFlap
+
+        self._attr_entity_picture = self._surepy_entity.icon
+        self._attr_unit_of_measurement = None
+
+        if self._state:
+            self._attr_extra_state_attributes = {
+                "learn_mode": bool(self._state["learn_mode"]),
+                **self._surepy_entity.raw_data(),
+            }
+
+            if locking := self._state.get("locking"):
+                self._attr_state = LockState(locking["mode"]).name.casefold()
+
     @property
     def state(self) -> str:
         """Return battery level in percent."""
         return LockState(self._state["locking"]["mode"]).name.casefold()
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return the state attributes of the device."""
-        attributes = None
-        if self._state:
-            attributes = {
-                "learn_mode": bool(self._state["learn_mode"]),
-                **self._surepy_entity.raw_data(),
-            }
-
-        return attributes
-
-    @property
-    def entity_picture(self) -> str | None:
-        return self._surepy_entity.icon
-
 
 class Felaqua(SurePetcareSensor):
     """Sure Petcare Felaqua."""
 
+    def __init__(self, _id: int, spc: SurePetcareAPI):
+        super().__init__(_id, spc)
+
+        self._surepy_entity: SureFelaqua
+
+        self._attr_entity_picture = self._surepy_entity.icon
+
+        if self._surepy_entity.water_remaining:
+            self._attr_state = self._surepy_entity.water_remaining.__round__()
+        else:
+            self._attr_state = "unknown"
+
+        self._attr_unit_of_measurement = VOLUME_MILLILITERS
+
+        if self._state:
+            self._attr_extra_state_attributes = {}
+
+            for weight in self._state.get("drink", {}).get("weights", {}):
+                attr_key = f"weight_{weight['index']}"
+                self._attr_extra_state_attributes[attr_key] = weight
+
     @property
-    def state(self) -> int | None:
+    def state(self) -> int:
         """Return the remaining water."""
-        self._surepy_entity: Felaqua
-        return int(self._surepy_entity.water_remaining)
+        return int(self._surepy_entity.water_remaining or 0)
 
     @property
     def device_info(self):
@@ -260,29 +269,22 @@ class FeederBowl(SurePetcareSensor):
         self._spc: SurePetcareAPI = spc
 
         self._surepy_feeder_entity: SurepyEntity = self._spc.states[_id]
-        self._surepy_entity: SureFeederBowl = self._spc.states[_id].bowls[
-            self.bowl_id
-        ]  # type:ignore
+        self._surepy_entity: SureFeederBowl = self._spc.states[_id].bowls[self.bowl_id]
         self._state: dict[str, Any] = bowl_data
 
         # https://github.com/PyCQA/pylint/issues/2062
         # pylint: disable=no-member
-        self._name = (
+        self._attr_name = (
             f"{EntityType.FEEDER.name.replace('_', ' ').title()} "
             f"{self._surepy_entity.name.capitalize()}"
         )
 
-    # @property
-    # def name(self) -> str:
-    #     """Return the name of the device if any."""
-    #     return f"{self._name} "
-
-    @property
-    def unique_id(self) -> str:
-        """Return an unique ID."""
-        return (
+        self._attr_icon = "mdi:bowl"
+        self._attr_state = int(self._surepy_entity.weight)
+        self._attr_unique_id = (
             f"{self._surepy_feeder_entity.household_id}-{self.feeder_id}-{self.bowl_id}"
         )
+        self._attr_unit_of_measurement = MASS_GRAMS
 
     @property
     def state(self) -> int | None:
@@ -306,6 +308,14 @@ class FeederBowl(SurePetcareSensor):
 class Feeder(SurePetcareSensor):
     """Sure Petcare Feeder."""
 
+    def __init__(self, _id: int, spc: SurePetcareAPI):
+        super().__init__(_id, spc)
+
+        self._surepy_entity: SureFeeder
+
+        self._attr_entity_picture = self._surepy_entity.icon
+        self._attr_state = int(self._surepy_entity.total_weight)
+        self._attr_unit_of_measurement = MASS_GRAMS
 
     @property
     def state(self) -> int | None:
@@ -359,40 +369,30 @@ class Feeder(SurePetcareSensor):
 class SureBattery(SurePetcareSensor):
     """Sure Petcare Flap."""
 
-    @property
-    def name(self) -> str:
-        """Return the name of the device if any."""
-        return f"{self._name} Battery Level"
+    def __init__(self, _id: int, spc: SurePetcareAPI):
+        super().__init__(_id, spc)
+
+        self._surepy_entity: SurepyDevice
+
+        self._attr_device_class = DEVICE_CLASS_BATTERY
+        self._attr_name = f"{self._attr_name} Battery Level"
+        self._attr_state = self._surepy_entity.battery_level  # type: ignore
+        self._attr_unit_of_measurement = PERCENTAGE
+        self._attr_unique_id = (
+            f"{self._surepy_entity.household_id}-{self._surepy_entity.id}-battery"
+        )
+
+        if self._state:
+            self._attr_extra_state_attributes = {}
+
+            voltage_per_battery = float(self._state["battery"]) / 4
+            self._attr_extra_state_attributes = {
+                ATTR_VOLTAGE: f"{float(self._state['battery']):.2f}",
+                f"{ATTR_VOLTAGE}_per_battery": f"{voltage_per_battery:.2f}",
+                "alt-battery": (1 - pow(6 - float(self._state["battery"]), 2)) * 100,
+            }
 
     @property
     def state(self) -> int | None:
         """Return battery level in percent."""
         return self._surepy_entity.battery_level
-
-    @property
-    def unique_id(self) -> str:
-        """Return an unique ID."""
-        return f"{self._surepy_entity.household_id}-{self._surepy_entity.id}-battery"
-
-    @property
-    def device_class(self) -> str:
-        """Return the device class."""
-        return str(DEVICE_CLASS_BATTERY)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return state attributes."""
-        attributes = None
-        if self._state:
-            voltage_per_battery = float(self._state["battery"]) / 4
-            attributes = {
-                ATTR_VOLTAGE: f"{float(self._state['battery']):.2f}",
-                f"{ATTR_VOLTAGE}_per_battery": f"{voltage_per_battery:.2f}",
-            }
-
-        return attributes
-
-    @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return str(PERCENTAGE)
