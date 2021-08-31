@@ -73,7 +73,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     except SurePetcareAuthenticationError:
         _LOGGER.error(
-            "🐾 \x1b[38;2;255;26;102m·\x1b[0m unable to connect to surepetcare.io: Wrong credentials!"
+            "🐾 \x1b[38;2;255;26;102m·\x1b[0m unable to auth. to surepetcare.io: wrong credentials"
         )
         return False
     except SurePetcareError as error:
