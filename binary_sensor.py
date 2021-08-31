@@ -113,6 +113,8 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
 
             if serial := self._surepy_entity.raw_data().get("serial_number", None):
                 model = f"{model} ({serial})"
+            elif tag_id := self._surepy_entity.raw_data().get("tag_id", None):
+                model = f"{model} ({tag_id})"
 
             device = {
                 "identifiers": {(DOMAIN, self._id)},
