@@ -152,8 +152,12 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
 
         self._surepy_entity = self._spc.states[self._id]
         self._state = self._surepy_entity.raw_data()["status"]
+
         _LOGGER.debug(
-            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!", self._surepy_entity.name
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated",
+            self._attr_name.replace(
+                f"{self._surepy_entity.type.name.replace('_', ' ').title()} ", ""
+            ),
         )
 
     async def async_added_to_hass(self) -> None:
@@ -259,7 +263,7 @@ class FeederBowl(SurePetcareSensor):
     """Sure Petcare Feeder Bowl."""
 
     def __init__(self, _id: int, spc: SurePetcareAPI, bowl_data: dict[str, int | str]):
-        """Initialize a Sure Petcare sensor."""
+        """Initialize a Bowl sensor."""
         super().__init__(_id, spc)
 
         self.feeder_id = _id
@@ -300,7 +304,7 @@ class FeederBowl(SurePetcareSensor):
         self._state = self._surepy_entity.raw_data()
 
         _LOGGER.debug(
-            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!",
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated",
             self._surepy_entity.name.capitalize(),
         )
 
@@ -361,7 +365,7 @@ class Feeder(SurePetcareSensor):
                 self._surepy_entity.bowls[bowl_data["index"]]._data = bowl_data
 
         _LOGGER.debug(
-            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!",
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated",
             self._surepy_entity.name.capitalize(),
         )
 

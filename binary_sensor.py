@@ -149,7 +149,7 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
         self._state = self._surepy_entity.raw_data()["status"]
 
         _LOGGER.debug(
-            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!",
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated",
             self._attr_name.replace(
                 f"{self._surepy_entity.type.name.replace('_', ' ').title()} ", ""
             ),
@@ -241,7 +241,7 @@ class Pet(SurePetcareBinarySensor):
             self._attr_is_on: bool = False
 
         _LOGGER.debug(
-            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated!",
+            "🐾 \x1b[38;2;0;255;0m·\x1b[0m %s updated",
             self._attr_name.replace(
                 f"{self._surepy_entity.type.name.replace('_', ' ').title()} ", ""
             ),
