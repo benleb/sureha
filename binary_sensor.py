@@ -114,11 +114,16 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
         device = {}
 
         try:
+            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
+
+            if serial := self._surepy_entity.raw_data().get("serial_number", None):
+                model = f"{model} ({serial})"
+
             device = {
                 "identifiers": {(DOMAIN, self._id)},
-                "name": self._surepy_entity.name.title(),
+                "name": self._surepy_entity.name.capitalize(),  # type: ignore
                 "manufacturer": SURE_MANUFACTURER,
-                "model": self._surepy_entity.type.name.replace("_", " ").title(),
+                "model": model,
             }
 
             # if self._surepy_entity:
@@ -131,9 +136,10 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
                 if (lcd_version := versions.get("lcd", {})) and (
                     rf_version := versions.get("rf", {})
                 ):
-                    device[
-                        "sw_version"
-                    ] = f"{lcd_version['version']} | {rf_version['version']}"
+                    device["sw_version"] = (
+                        f"lcd: {lcd_version.get('version', lcd_version)['firmware']} | "
+                        f"fw: {rf_version.get('version', rf_version)['firmware']}"
+                    )
 
         except AttributeError:
             pass

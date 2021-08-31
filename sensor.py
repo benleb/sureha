@@ -127,14 +127,19 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
         device = {}
 
         try:
+            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
+
+            if serial := self._surepy_entity.raw_data().get("serial_number", None):
+                model = f"{model} ({serial})"
+
             device = {
                 "identifiers": {(DOMAIN, self._id)},
-                "name": self._surepy_entity.name.title(),
+                "name": self._surepy_entity.name.capitalize(),  # type: ignore
                 "manufacturer": SURE_MANUFACTURER,
-                "model": self._surepy_entity.type.name.replace("_", " ").title(),
+                "model": model,
             }
 
-            if self._state:
+            if self._surepy_entity:
                 versions = self._state.get("version", {})
 
                 if dev_fw_version := versions.get("device", {}).get("firmware"):
@@ -143,9 +148,10 @@ class SurePetcareSensor(SensorEntity):  # type: ignore
                 if (lcd_version := versions.get("lcd", {})) and (
                     rf_version := versions.get("rf", {})
                 ):
-                    device[
-                        "sw_version"
-                    ] = f"{lcd_version['version']} | {rf_version['version']}"
+                    device["sw_version"] = (
+                        f"lcd: {lcd_version.get('version', lcd_version)['firmware']} | "
+                        f"fw: {rf_version.get('version', rf_version)['firmware']}"
+                    )
 
         except AttributeError:
             pass
@@ -217,31 +223,27 @@ class Felaqua(SurePetcareSensor):
         return int(self._surepy_entity.water_remaining)
 
     @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return str(VOLUME_MILLILITERS)
+    def device_info(self):
 
-    @property
-    def entity_picture(self) -> str | None:
-        return self._surepy_entity.icon
+        device = {}
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return the state attributes of the device."""
-        attributes = None
+        try:
+            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
 
-        attrs: dict[str, Any] = self._surepy_entity.raw_data()
-        weights: list[dict[str, int | float | str]] = attrs.get("drink", {}).get(
-            "weights"
-        )
+            if serial := self._surepy_entity.raw_data().get("serial_number", None):
+                model = f"{model} ({serial})"
 
-        for weight in weights:
-            attr_key = f"weight_{weight['index']}"
-            attrs[attr_key] = weight
+            device = {
+                "identifiers": {(DOMAIN, self._id)},
+                "name": self._surepy_entity.name.capitalize(),  # type: ignore
+                "manufacturer": SURE_MANUFACTURER,
+                "model": model,
+            }
 
-        attributes = attrs
+        except AttributeError:
+            pass
 
-        return attributes
+        return device
 
 
 class FeederBowl(SurePetcareSensor):
@@ -312,13 +314,27 @@ class Feeder(SurePetcareSensor):
         return int(self._surepy_entity.total_weight)
 
     @property
-    def unit_of_measurement(self) -> str:
-        """Return the unit of measurement."""
-        return str(MASS_GRAMS)
+    def device_info(self):
 
-    @property
-    def entity_picture(self) -> str | None:
-        return self._surepy_entity.icon
+        device = {}
+
+        try:
+            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
+
+            if serial := self._surepy_entity.raw_data().get("serial_number", None):
+                model = f"{model} ({serial})"
+
+            device = {
+                "identifiers": {(DOMAIN, self._id)},
+                "name": self._surepy_entity.name.capitalize(),  # type: ignore
+                "manufacturer": SURE_MANUFACTURER,
+                "model": model,
+            }
+
+        except AttributeError:
+            pass
+
+        return device
 
     @callback
     def _async_update(self) -> None:
