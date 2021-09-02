@@ -111,11 +111,11 @@ class SurePetcareBinarySensor(BinarySensorEntity):  # type: ignore
         try:
             model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
 
-            if serial := self._surepy_entity.raw_data().get("serial_number", None):
+            if serial := self._surepy_entity.raw_data().get("serial_number"):
                 model = f"{model} ({serial})"
-            elif mac_address := self._surepy_entity.raw_data().get("mac_address", None):
+            elif mac_address := self._surepy_entity.raw_data().get("mac_address"):
                 model = f"{model} ({mac_address})"
-            elif tag_id := self._surepy_entity.raw_data().get("tag_id", None):
+            elif tag_id := self._surepy_entity.raw_data().get("tag_id"):
                 model = f"{model} ({tag_id})"
 
             device = {
