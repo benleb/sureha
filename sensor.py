@@ -380,7 +380,7 @@ class SureBattery(SurePetcareSensor):
 
         self._attr_device_class = DEVICE_CLASS_BATTERY
         self._attr_name = f"{self._attr_name} Battery Level"
-        self._attr_state = self._surepy_entity.battery_level  # type: ignore
+
         self._attr_unit_of_measurement = PERCENTAGE
         self._attr_unique_id = (
             f"{self._surepy_entity.household_id}-{self._surepy_entity.id}-battery"
