@@ -173,7 +173,7 @@ class Flap(SurePetcareSensor):
                 self._attr_state = LockState(locking["mode"]).name.casefold()
 
     @property
-    def state(self) -> str:
+    def state(self) -> str | None:
         """Return battery level in percent."""
         if (
             state := cast(SureFlap, self.coordinator.data[self._id])
@@ -181,8 +181,6 @@ class Flap(SurePetcareSensor):
             .get("status")
         ):
             return LockState(state["locking"]["mode"]).name.casefold()
-
-        return "Unknown"
 
 
 class Felaqua(SurePetcareSensor):
@@ -196,10 +194,10 @@ class Felaqua(SurePetcareSensor):
         self._attr_unit_of_measurement = VOLUME_MILLILITERS
 
     @property
-    def state(self) -> int | None:
+    def state(self) -> float | None:
         """Return the remaining water."""
         if felaqua := cast(SureFelaqua, self.coordinator.data[self._id]):
-            return max(0, int(felaqua.water_remaining or 0))
+            return int(felaqua.water_remaining) if felaqua.water_remaining else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -284,10 +282,13 @@ class FeederBowl(SurePetcareSensor):
         self._attr_unit_of_measurement = MASS_GRAMS
 
     @property
-    def state(self) -> int | None:
+    def state(self) -> float | None:
         """Return the remaining water."""
-        if feeder := cast(SureFeeder, self.coordinator.data[self.feeder_id]):
-            return max(0, int(feeder.bowls[self.bowl_id].weight))
+
+        if (feeder := cast(SureFeeder, self.coordinator.data[self.feeder_id])) and (
+            weight := feeder.bowls[self.bowl_id].weight
+        ):
+            return int(weight) if weight and weight > 0 else None
 
 
 class Feeder(SurePetcareSensor):
@@ -301,10 +302,10 @@ class Feeder(SurePetcareSensor):
         self._attr_unit_of_measurement = MASS_GRAMS
 
     @property
-    def state(self) -> int | None:
+    def state(self) -> float | None:
         """Return the total remaining food."""
         if feeder := cast(SureFeeder, self.coordinator.data[self._id]):
-            return int(feeder.total_weight)
+            return int(feeder.total_weight) if feeder.total_weight else None
 
     @property
     def device_info(self):
@@ -349,10 +350,8 @@ class Battery(SurePetcareSensor):
     @property
     def state(self) -> int | None:
         """Return battery level in percent."""
-        if (
-            battery := cast(SurepyDevice, self.coordinator.data[self._id])
-        ) and battery.battery_level:
-            return max(0, battery.battery_level)
+        if battery := cast(SurepyDevice, self.coordinator.data[self._id]):
+            return int(battery.battery_level) if battery.battery_level else None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
