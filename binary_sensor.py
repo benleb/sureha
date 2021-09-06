@@ -169,7 +169,7 @@ class Hub(SurePetcareBinarySensor):
 
         hub: SureHub
 
-        if hub := self.coordinator.data[self._id]:
+        if hub := self._coordinator.data[self._id]:
 
             self._attr_extra_state_attributes = {
                 "led_mode": int(hub.raw_data()["status"]["led_mode"]),
@@ -201,7 +201,7 @@ class Pet(SurePetcareBinarySensor):
     def is_on(self) -> bool:
         """Return True if the pet is at home."""
         pet: SurePet
-        if pet := self.coordinator.data[self._id]:
+        if pet := self._coordinator.data[self._id]:
             return bool(Location(pet.location.where) == Location.INSIDE)
 
 

@@ -176,7 +176,7 @@ class Flap(SurePetcareSensor):
     def state(self) -> str | None:
         """Return battery level in percent."""
         if (
-            state := cast(SureFlap, self.coordinator.data[self._id])
+            state := cast(SureFlap, self._coordinator.data[self._id])
             .raw_data()
             .get("status")
         ):
@@ -196,7 +196,7 @@ class Felaqua(SurePetcareSensor):
     @property
     def state(self) -> float | None:
         """Return the remaining water."""
-        if felaqua := cast(SureFelaqua, self.coordinator.data[self._id]):
+        if felaqua := cast(SureFelaqua, self._coordinator.data[self._id]):
             return int(felaqua.water_remaining) if felaqua.water_remaining else None
 
     @property
@@ -206,7 +206,7 @@ class Felaqua(SurePetcareSensor):
         attrs = {}
 
         if (
-            state := cast(SureFelaqua, self.coordinator.data[self._id])
+            state := cast(SureFelaqua, self._coordinator.data[self._id])
             .raw_data()
             .get("status")
         ):
@@ -221,7 +221,7 @@ class Felaqua(SurePetcareSensor):
 
         device = {}
 
-        if felaqua := cast(SureFelaqua, self.coordinator.data[self._id]):
+        if felaqua := cast(SureFelaqua, self._coordinator.data[self._id]):
 
             try:
                 model = f"{felaqua.type.name.replace('_', ' ').title()}"
@@ -285,7 +285,7 @@ class FeederBowl(SurePetcareSensor):
     def state(self) -> float | None:
         """Return the remaining water."""
 
-        if (feeder := cast(SureFeeder, self.coordinator.data[self.feeder_id])) and (
+        if (feeder := cast(SureFeeder, self._coordinator.data[self.feeder_id])) and (
             weight := feeder.bowls[self.bowl_id].weight
         ):
             return int(weight) if weight and weight > 0 else None
@@ -304,7 +304,7 @@ class Feeder(SurePetcareSensor):
     @property
     def state(self) -> float | None:
         """Return the total remaining food."""
-        if feeder := cast(SureFeeder, self.coordinator.data[self._id]):
+        if feeder := cast(SureFeeder, self._coordinator.data[self._id]):
             return int(feeder.total_weight) if feeder.total_weight else None
 
     @property
@@ -350,7 +350,7 @@ class Battery(SurePetcareSensor):
     @property
     def state(self) -> int | None:
         """Return battery level in percent."""
-        if battery := cast(SurepyDevice, self.coordinator.data[self._id]):
+        if battery := cast(SurepyDevice, self._coordinator.data[self._id]):
             return int(battery.battery_level) if battery.battery_level else None
 
     @property
@@ -360,7 +360,7 @@ class Battery(SurePetcareSensor):
         attrs = {}
 
         if (
-            state := cast(SurepyDevice, self.coordinator.data[self._id])
+            state := cast(SurepyDevice, self._coordinator.data[self._id])
             .raw_data()
             .get("status")
         ):
