@@ -15,7 +15,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from surepy import Surepy
-from surepy.enums import LockState
+from surepy.entities import SurepyEntity
+from surepy.enums import EntityType, LockState
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
@@ -175,17 +176,23 @@ class SurePetcareAPI:
 
         async def handle_set_lock_state(call: Any) -> None:
             """Call when setting the lock state."""
-            await self.set_lock_state(
-                call.data[ATTR_FLAP_ID], call.data[ATTR_LOCK_STATE]
-            )
 
+            flap_id = call.data.get(ATTR_FLAP_ID)
+            lock_state = call.data.get(ATTR_LOCK_STATE)
+
+            await self.set_lock_state(flap_id, lock_state)
             await self.coordinator.async_request_refresh()
+
+        surepy_entities: list[SurepyEntity] = self.coordinator.data.values()
+        flap_ids = [
+            entity.id
+            for entity in surepy_entities
+            if entity.type in [EntityType.CAT_FLAP, EntityType.PET_FLAP]
+        ]
 
         lock_state_service_schema = vol.Schema(
             {
-                vol.Required(ATTR_FLAP_ID): vol.All(
-                    cv.positive_int, vol.In(self.states.keys())
-                ),
+                vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(flap_ids)),
                 vol.Required(ATTR_LOCK_STATE): vol.All(
                     cv.string,
                     vol.Lower,
