@@ -220,31 +220,6 @@ class Felaqua(SurePetcareSensor):
 
         return attrs
 
-    @property
-    def device_info(self):
-
-        device = {}
-
-        if felaqua := cast(SureFelaqua, self._coordinator.data[self._id]):
-
-            try:
-                model = f"{felaqua.type.name.replace('_', ' ').title()}"
-
-                if serial := felaqua.raw_data().get("serial_number", None):
-                    model = f"{model} ({serial})"
-
-                device = {
-                    "identifiers": {(DOMAIN, self._id)},
-                    "name": felaqua.name.capitalize(),
-                    "manufacturer": SURE_MANUFACTURER,
-                    "model": model,
-                }
-
-            except AttributeError:
-                pass
-
-        return device
-
 
 class FeederBowl(SurePetcareSensor):
     """Sure Petcare Feeder Bowl."""
@@ -310,29 +285,6 @@ class Feeder(SurePetcareSensor):
         """Return the total remaining food."""
         if feeder := cast(SureFeeder, self._coordinator.data[self._id]):
             return int(feeder.total_weight) if feeder.total_weight else None
-
-    @property
-    def device_info(self):
-
-        device = {}
-
-        try:
-            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
-
-            if serial := self._surepy_entity.raw_data().get("serial_number", None):
-                model = f"{model} ({serial})"
-
-            device = {
-                "identifiers": {(DOMAIN, self._id)},
-                "name": self._surepy_entity.name.capitalize(),
-                "manufacturer": SURE_MANUFACTURER,
-                "model": model,
-            }
-
-        except AttributeError:
-            pass
-
-        return device
 
 
 class Battery(SurePetcareSensor):
