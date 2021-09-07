@@ -114,8 +114,8 @@ class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
         device = {}
 
         try:
-            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
 
+            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
             if serial := self._surepy_entity.raw_data().get("serial_number"):
                 model = f"{model} ({serial})"
             elif mac_address := self._surepy_entity.raw_data().get("mac_address"):
@@ -130,7 +130,6 @@ class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
                 "model": model,
             }
 
-            # if self._surepy_entity:
             if self._state:
                 versions = self._state.get("version", {})
 
