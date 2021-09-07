@@ -120,10 +120,14 @@ class SurePetcareSensor(CoordinatorEntity, SensorEntity):
         device = {}
 
         try:
-            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
 
-            if serial := self._surepy_entity.raw_data().get("serial_number", None):
+            model = f"{self._surepy_entity.type.name.replace('_', ' ').title()}"
+            if serial := self._surepy_entity.raw_data().get("serial_number"):
                 model = f"{model} ({serial})"
+            elif mac_address := self._surepy_entity.raw_data().get("mac_address"):
+                model = f"{model} ({mac_address})"
+            elif tag_id := self._surepy_entity.raw_data().get("tag_id"):
+                model = f"{model} ({tag_id})"
 
             device = {
                 "identifiers": {(DOMAIN, self._id)},
@@ -132,7 +136,7 @@ class SurePetcareSensor(CoordinatorEntity, SensorEntity):
                 "model": model,
             }
 
-            if self._surepy_entity:
+            if self._state:
                 versions = self._state.get("version", {})
 
                 if dev_fw_version := versions.get("device", {}).get("firmware"):
