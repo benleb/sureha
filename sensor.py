@@ -203,20 +203,6 @@ class Felaqua(SurePetcareSensor):
         if felaqua := cast(SureFelaqua, self._coordinator.data[self._id]):
             return int(felaqua.water_remaining) if felaqua.water_remaining else None
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attrs."""
-
-        attrs = {}
-
-        if state := cast(SureFelaqua, self._coordinator.data[self._id]).raw_data():
-
-            for weight in state.get("drink", {}).get("weights", {}):
-                attr_key = f"weight_{weight['index']}"
-                attrs[attr_key] = weight
-
-        return attrs
-
 
 class FeederBowl(SurePetcareSensor):
     """Sure Petcare Feeder Bowl."""
