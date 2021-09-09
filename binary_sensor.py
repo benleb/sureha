@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from surepy.entities import SurepyEntity
-from surepy.entities.devices import Hub as SureHub
+from surepy.entities.devices import Hub as SureHub, SurepyDevice
 from surepy.entities.pet import Pet as SurePet
 from surepy.enums import EntityType, Location
 
@@ -167,6 +167,7 @@ class Hub(SurePetcareBinarySensor):
         """Return True if the hub is on."""
 
         hub: SureHub
+        online: bool = False
 
         if hub := self._coordinator.data[self._id]:
 
@@ -175,7 +176,9 @@ class Hub(SurePetcareBinarySensor):
                 "pairing_mode": bool(hub.raw_data()["status"]["pairing_mode"]),
             }
 
-            return bool(hub.online)
+            online = hub.online
+
+        return online
 
 
 class Pet(SurePetcareBinarySensor):
@@ -183,32 +186,51 @@ class Pet(SurePetcareBinarySensor):
 
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare Pet."""
+
         super().__init__(coordinator, _id, spc, DEVICE_CLASS_PRESENCE)
 
+        # explicit typing
         self._surepy_entity: SurePet
 
+        # picture of the pet that can be added via the sure app/website
         self._attr_entity_picture = self._surepy_entity.photo_url
 
-        if self._surepy_entity:
-            self._attr_extra_state_attributes = {
-                "since": self._surepy_entity.location.since,
-                "where": self._surepy_entity.location.where,
-                **self._surepy_entity.raw_data(),
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the additional attrs."""
+
+        pet: SurePet
+        attrs: dict[str, Any] = {}
+
+        if pet := self._coordinator.data[self._id]:
+
+            attrs = {
+                "since": pet.location.since,
+                "where": pet.location.where,
+                **pet.raw_data(),
             }
+
+        return attrs
 
     @property
     def is_on(self) -> bool:
         """Return True if the pet is at home."""
+
         pet: SurePet
+        inside: bool = False
+
         if pet := self._coordinator.data[self._id]:
-            return bool(Location(pet.location.where) == Location.INSIDE)
+            inside = bool(pet.location.where == Location.INSIDE)
+
+        return inside
 
 
 class DeviceConnectivity(SurePetcareBinarySensor):
-    """Sure Petcare Pet."""
+    """Sure Petcare Connectivity Sensor."""
 
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare device connectivity sensor."""
+
         super().__init__(coordinator, _id, spc, DEVICE_CLASS_CONNECTIVITY)
 
         self._attr_name = f"{self._name} Connectivity"
@@ -218,13 +240,20 @@ class DeviceConnectivity(SurePetcareBinarySensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        if (data := self._surepy_entity.raw_data()) and (state := data.get("status")):
-            return {
+        """Return the additional attrs."""
+
+        device: SurepyDevice
+        attrs: dict[str, Any] = {}
+
+        if (device := self._coordinator.data[self._id]) and (
+            state := device.raw_data().get("status")
+        ):
+            attrs = {
                 "device_rssi": f'{state["signal"]["device_rssi"]:.2f}',
                 "hub_rssi": f'{state["signal"]["hub_rssi"]:.2f}',
             }
 
-        return {}
+        return attrs
 
     @property
     def is_on(self) -> bool:
