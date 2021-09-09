@@ -17,7 +17,11 @@ SURE_BATT_VOLTAGE_FULL = 1.6
 SURE_BATT_VOLTAGE_LOW = 1.25
 SURE_BATT_VOLTAGE_DIFF = SURE_BATT_VOLTAGE_FULL - SURE_BATT_VOLTAGE_LOW
 
-# lock state service
+# services
 SERVICE_SET_LOCK_STATE = "set_lock_state"
 ATTR_FLAP_ID = "flap_id"
 ATTR_LOCK_STATE = "lock_state"
+
+SERVICE_PET_LOCATION = "set_pet_location"
+ATTR_PET_ID = "pet_id"
+ATTR_WHERE = "where"
