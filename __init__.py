@@ -35,7 +35,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = ["binary_sensor", "sensor"]
+PLATFORMS = ["binary_sensor", "device_tracker", "sensor"]
 SCAN_INTERVAL = timedelta(minutes=3)
 
 CONFIG_SCHEMA = vol.Schema(
@@ -177,11 +177,11 @@ class SurePetcareAPI:
             )
         )
 
-        # self.hass.async_add_job(
-        #     self.hass.config_entries.async_forward_entry_setup(  # type: ignore
-        #         self.config_entry, "device_tracker"
-        #     )
-        # )
+        self.hass.async_add_job(
+            self.hass.config_entries.async_forward_entry_setup(  # type: ignore
+                self.config_entry, "device_tracker"
+            )
+        )
 
         surepy_entities: list[SurepyEntity] = self.coordinator.data.values()
 
@@ -200,7 +200,6 @@ class SurePetcareAPI:
                             # pylint: disable=no-member
                             Location.INSIDE.name.title(),
                             Location.OUTSIDE.name.title(),
-                            # Location.UNKNOWN.name.title(),
                         ]
                     ),
                 ),
