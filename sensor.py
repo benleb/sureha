@@ -26,7 +26,7 @@ from surepy.enums import EntityType, LockState
 
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
-from .const import DOMAIN, SPC, SURE_MANUFACTURER
+from .const import ATTR_VOLTAGE_FULL, ATTR_VOLTAGE_LOW, DOMAIN, SPC, SURE_MANUFACTURER
 
 PARALLEL_UPDATES = 2
 
@@ -77,7 +77,22 @@ async def async_setup_entry(
             EntityType.FELAQUA,
         ]:
 
-            entities.append(Battery(spc.coordinator, surepy_entity.id, spc))
+            voltage_batteries_full = cast(
+                float, config_entry.options.get(ATTR_VOLTAGE_FULL)
+            )
+            voltage_batteries_low = cast(
+                float, config_entry.options.get(ATTR_VOLTAGE_LOW)
+            )
+
+            entities.append(
+                Battery(
+                    spc.coordinator,
+                    surepy_entity.id,
+                    spc,
+                    voltage_full=voltage_batteries_full,
+                    voltage_low=voltage_batteries_low,
+                )
+            )
 
     async_add_entities(entities)
 
@@ -272,12 +287,22 @@ class Feeder(SurePetcareSensor):
 class Battery(SurePetcareSensor):
     """Sure Petcare Flap."""
 
-    def __init__(self, coordinator, _id: int, spc: SurePetcareAPI):
+    def __init__(
+        self,
+        coordinator,
+        _id: int,
+        spc: SurePetcareAPI,
+        voltage_full: float,
+        voltage_low: float,
+    ):
         super().__init__(coordinator, _id, spc)
 
         self._surepy_entity: SurepyDevice
 
         self._attr_name = f"{self._attr_name} Battery Level"
+
+        self.voltage_low = voltage_low
+        self.voltage_full = voltage_full
 
         self._attr_unit_of_measurement = PERCENTAGE
         self._attr_device_class = DEVICE_CLASS_BATTERY
@@ -290,9 +315,14 @@ class Battery(SurePetcareSensor):
         """Return battery level in percent."""
 
         if battery := cast(SurepyDevice, self._coordinator.data[self._id]):
-            self._surepy_entity = battery
 
-            return int(battery.battery_level) if battery.battery_level else None
+            self._surepy_entity = battery
+            battery_level = battery.calculate_battery_level(
+                voltage_full=self.voltage_full, voltage_low=self.voltage_low
+            )
+
+            # return batterie level between 0 and 100
+            return battery_level
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
