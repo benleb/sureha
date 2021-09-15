@@ -1,11 +1,11 @@
 {
-  "domain": "sureha",
-  "name": "SureHA",
-  "version": "0.2.0",
-  "documentation": "https://github.com/benleb/sureha",
-  "issue_tracker": "https://github.com/benleb/sureha/issues",
-  "config_flow": true,
-  "codeowners": ["@benleb"],
-  "requirements": ["surepy>=0.7.1"],
-  "iot_class": "cloud_polling"
+    "domain": "sureha",
+    "name": "SureHA",
+    "version": "0.2.0",
+    "documentation": "https://github.com/benleb/sureha",
+    "issue_tracker": "https://github.com/benleb/sureha/issues",
+    "config_flow": true,
+    "codeowners": ["@benleb"],
+    "requirements": ["surepy>=0.7.2"],
+    "iot_class": "cloud_polling"
 }
