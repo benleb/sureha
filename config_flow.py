@@ -6,13 +6,21 @@ from typing import Any
 
 from homeassistant import config_entries, core, data_entry_flow
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from surepy import Surepy
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
 import voluptuous as vol
 
 # pylint: disable=relative-beyond-top-level
-from .const import DOMAIN, SURE_API_TIMEOUT
+from .const import (
+    ATTR_VOLTAGE_FULL,
+    ATTR_VOLTAGE_LOW,
+    DOMAIN,
+    SURE_API_TIMEOUT,
+    SURE_BATT_VOLTAGE_FULL,
+    SURE_BATT_VOLTAGE_LOW,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,6 +57,12 @@ class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
 
     VERSION = 1
     CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Get the options flow for this handler."""
+        return SureHAOptionsFlowHandler(config_entry)
 
     async def async_step_import(
         self, import_info: dict[str, Any]
@@ -89,3 +103,33 @@ class SurePetcareConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
             )
 
         return self.async_abort(reason="authentication_failed")
+
+
+class SureHAOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle SureHA options."""
+
+    def __init__(self, config_entry):
+        """Initialize SureHA options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(self, user_input=None):
+        """Manage the SureHA options."""
+        if user_input is not None:
+            return self.async_create_entry(title="SureHA Options", data=user_input)
+
+        options = {
+            vol.Optional(
+                ATTR_VOLTAGE_LOW,
+                default=self.config_entry.options.get(
+                    ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW
+                ),
+            ): float,
+            vol.Optional(
+                ATTR_VOLTAGE_FULL,
+                default=self.config_entry.options.get(
+                    ATTR_VOLTAGE_FULL, SURE_BATT_VOLTAGE_FULL
+                ),
+            ): float,
+        }
+
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(options))

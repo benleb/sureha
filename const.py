@@ -12,7 +12,9 @@ SURE_API_TIMEOUT = 60
 # device info
 SURE_MANUFACTURER = "Sure Petcare"
 
-# pet door c-cell battery voltage
+# batteries
+ATTR_VOLTAGE_FULL = "voltage_full"
+ATTR_VOLTAGE_LOW = "voltage_low"
 SURE_BATT_VOLTAGE_FULL = 1.6
 SURE_BATT_VOLTAGE_LOW = 1.25
 SURE_BATT_VOLTAGE_DIFF = SURE_BATT_VOLTAGE_FULL - SURE_BATT_VOLTAGE_LOW

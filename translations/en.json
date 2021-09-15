@@ -14,5 +14,17 @@
                 "title": "Sure Petcare"
             }
         }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "voltage_full": "Voltage (batteries full)",
+                    "voltage_low": "Voltage (batteries low)"
+                },
+                "description": "Battery options",
+                "title": "SureHA Options"
+            }
+        }
     }
 }

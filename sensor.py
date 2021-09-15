@@ -260,6 +260,7 @@ class Feeder(SurePetcareSensor):
         super().__init__(coordinator, _id, spc)
 
         self._surepy_entity: SureFeeder
+
         self._attr_entity_picture = self._surepy_entity.icon
         self._attr_unit_of_measurement = MASS_GRAMS
 
@@ -290,6 +291,8 @@ class Battery(SurePetcareSensor):
     def state(self) -> int | None:
         """Return battery level in percent."""
         if battery := cast(SurepyDevice, self._coordinator.data[self._id]):
+            self._surepy_entity = battery
+
             return int(battery.battery_level) if battery.battery_level else None
 
     @property
@@ -298,16 +301,17 @@ class Battery(SurePetcareSensor):
 
         attrs = {}
 
-        if (
-            state := cast(SurepyDevice, self._coordinator.data[self._id])
-            .raw_data()
-            .get("status")
+        if (device := cast(SurepyDevice, self._coordinator.data[self._id])) and (
+            state := device.raw_data().get("status")
         ):
-            voltage_per_battery = float(state["battery"]) / 4
+            self._surepy_entity = device
+
+            voltage = float(state["battery"])
+
             attrs = {
-                ATTR_VOLTAGE: f"{float(state['battery']):.2f}",
-                f"{ATTR_VOLTAGE}_per_battery": f"{voltage_per_battery:.2f}",
-                "alt-battery": (1 - pow(6 - float(state["battery"]), 2)) * 100,
+                "battery_level": device.battery_level,
+                ATTR_VOLTAGE: f"{voltage:.2f}",
+                f"{ATTR_VOLTAGE}_per_battery": f"{voltage / 4:.2f}",
             }
 
         return attrs
