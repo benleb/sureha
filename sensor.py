@@ -1,7 +1,6 @@
 """Support for Sure PetCare Flaps/Pets sensors."""
 from __future__ import annotations
 
-import logging
 from typing import Any, cast
 
 from homeassistant.components.sensor import SensorEntity
@@ -30,9 +29,6 @@ from . import SurePetcareAPI
 from .const import DOMAIN, SPC, SURE_MANUFACTURER
 
 PARALLEL_UPDATES = 2
-
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_platform(
@@ -80,6 +76,7 @@ async def async_setup_entry(
             EntityType.FEEDER,
             EntityType.FELAQUA,
         ]:
+
             entities.append(Battery(spc.coordinator, surepy_entity.id, spc))
 
     async_add_entities(entities)
@@ -194,6 +191,7 @@ class Felaqua(SurePetcareSensor):
         super().__init__(coordinator, _id, spc)
 
         self._surepy_entity: SureFelaqua
+
         self._attr_entity_picture = self._surepy_entity.icon
         self._attr_unit_of_measurement = VOLUME_MILLILITERS
 
@@ -280,8 +278,8 @@ class Battery(SurePetcareSensor):
         self._surepy_entity: SurepyDevice
 
         self._attr_name = f"{self._attr_name} Battery Level"
-        self._attr_unit_of_measurement = PERCENTAGE
 
+        self._attr_unit_of_measurement = PERCENTAGE
         self._attr_device_class = DEVICE_CLASS_BATTERY
         self._attr_unique_id = (
             f"{self._surepy_entity.household_id}-{self._surepy_entity.id}-battery"
@@ -290,6 +288,7 @@ class Battery(SurePetcareSensor):
     @property
     def state(self) -> int | None:
         """Return battery level in percent."""
+
         if battery := cast(SurepyDevice, self._coordinator.data[self._id]):
             self._surepy_entity = battery
 

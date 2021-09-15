@@ -1,7 +1,6 @@
 """Support for Sure PetCare Flaps/Pets binary sensors."""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -22,9 +21,6 @@ from . import SurePetcareAPI
 from .const import DOMAIN, SPC, SURE_MANUFACTURER
 
 PARALLEL_UPDATES = 2
-
-
-_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_platform(
