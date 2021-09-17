@@ -25,12 +25,16 @@ from .const import (
     ATTR_FLAP_ID,
     ATTR_LOCK_STATE,
     ATTR_PET_ID,
+    ATTR_VOLTAGE_FULL,
+    ATTR_VOLTAGE_LOW,
     ATTR_WHERE,
     DOMAIN,
     SERVICE_PET_LOCATION,
     SERVICE_SET_LOCK_STATE,
     SPC,
     SURE_API_TIMEOUT,
+    SURE_BATT_VOLTAGE_FULL,
+    SURE_BATT_VOLTAGE_LOW,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -66,6 +70,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up."""
 
     hass.data.setdefault(DOMAIN, {})
+
+    # set option defaults
+    if not entry.options:
+        hass.config_entries.async_update_entry(
+            entry,
+            options={
+                ATTR_VOLTAGE_FULL: SURE_BATT_VOLTAGE_FULL,
+                ATTR_VOLTAGE_LOW: SURE_BATT_VOLTAGE_LOW,
+            },
+        )
 
     try:
         surepy = Surepy(
