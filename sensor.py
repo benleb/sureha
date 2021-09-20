@@ -26,7 +26,15 @@ from surepy.enums import EntityType, LockState
 
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
-from .const import ATTR_VOLTAGE_FULL, ATTR_VOLTAGE_LOW, DOMAIN, SPC, SURE_MANUFACTURER
+from .const import (
+    ATTR_VOLTAGE_FULL,
+    ATTR_VOLTAGE_LOW,
+    DOMAIN,
+    SPC,
+    SURE_BATT_VOLTAGE_FULL,
+    SURE_BATT_VOLTAGE_LOW,
+    SURE_MANUFACTURER,
+)
 
 PARALLEL_UPDATES = 2
 
@@ -77,12 +85,8 @@ async def async_setup_entry(
             EntityType.FELAQUA,
         ]:
 
-            voltage_batteries_full = cast(
-                float, config_entry.options.get(ATTR_VOLTAGE_FULL)
-            )
-            voltage_batteries_low = cast(
-                float, config_entry.options.get(ATTR_VOLTAGE_LOW)
-            )
+            voltage_batteries_full = cast(float, config_entry.options.get(ATTR_VOLTAGE_FULL, SURE_BATT_VOLTAGE_FULL))
+            voltage_batteries_low = cast(float, config_entry.options.get(ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW))
 
             entities.append(
                 Battery(
