@@ -85,8 +85,13 @@ async def async_setup_entry(
             EntityType.FELAQUA,
         ]:
 
-            voltage_batteries_full = cast(float, config_entry.options.get(ATTR_VOLTAGE_FULL, SURE_BATT_VOLTAGE_FULL))
-            voltage_batteries_low = cast(float, config_entry.options.get(ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW))
+            voltage_batteries_full = cast(
+                float,
+                config_entry.options.get(ATTR_VOLTAGE_FULL, SURE_BATT_VOLTAGE_FULL),
+            )
+            voltage_batteries_low = cast(
+                float, config_entry.options.get(ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW)
+            )
 
             entities.append(
                 Battery(
