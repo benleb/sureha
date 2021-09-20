@@ -1,6 +1,6 @@
-# 🐱 SureHA 🐱
+# SureHA 🐾
 
-
+> documentation is currently in a bad state. I am aware of this and working on it!
 
 ## Entities
 
