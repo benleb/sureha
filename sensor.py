@@ -3,14 +3,16 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import (
+SensorDeviceClass,
+SensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_VOLTAGE,
-    DEVICE_CLASS_BATTERY,
-    MASS_GRAMS,
+    UnitOfMass,
     PERCENTAGE,
-    VOLUME_MILLILITERS,
+    UnitOfVolume,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -217,7 +219,7 @@ class Felaqua(SurePetcareSensor):
         self._surepy_entity: SureFelaqua
 
         self._attr_entity_picture = self._surepy_entity.icon
-        self._attr_unit_of_measurement = VOLUME_MILLILITERS
+        self._attr_unit_of_measurement = UnitOfVolume.MILLILITERS
 
     @property
     def state(self) -> float | None:
@@ -263,7 +265,7 @@ class FeederBowl(SurePetcareSensor):
         self._attr_unique_id = (
             f"{self._surepy_feeder_entity.household_id}-{self.feeder_id}-{self.bowl_id}"
         )
-        self._attr_unit_of_measurement = MASS_GRAMS
+        self._attr_unit_of_measurement = UnitOfMass.GRAMS
 
     @property
     def state(self) -> float | None:
@@ -284,7 +286,7 @@ class Feeder(SurePetcareSensor):
         self._surepy_entity: SureFeeder
 
         self._attr_entity_picture = self._surepy_entity.icon
-        self._attr_unit_of_measurement = MASS_GRAMS
+        self._attr_unit_of_measurement = UnitOfMass.GRAMS
 
     @property
     def state(self) -> float | None:
@@ -314,7 +316,7 @@ class Battery(SurePetcareSensor):
         self.voltage_full = voltage_full
 
         self._attr_unit_of_measurement = PERCENTAGE
-        self._attr_device_class = DEVICE_CLASS_BATTERY
+        self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_unique_id = (
             f"{self._surepy_entity.household_id}-{self._surepy_entity.id}-battery"
         )
