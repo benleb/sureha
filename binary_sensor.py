@@ -4,9 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
-    #DEVICE_CLASS_CONNECTIVITY,
     BinarySensorDeviceClass,
-    #DEVICE_CLASS_PRESENCE,
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
