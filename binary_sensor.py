@@ -4,8 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
-    DEVICE_CLASS_CONNECTIVITY,
-    DEVICE_CLASS_PRESENCE,
+    BinarySensorDeviceClass,
     BinarySensorEntity,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -151,7 +150,7 @@ class Hub(SurePetcareBinarySensor):
 
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare Hub."""
-        super().__init__(coordinator, _id, spc, DEVICE_CLASS_CONNECTIVITY)
+        super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.CONNECTIVITY))
 
         if self._attr_device_info:
             self._attr_device_info["identifiers"] = {(DOMAIN, str(self._id))}
@@ -183,7 +182,7 @@ class Pet(SurePetcareBinarySensor):
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare Pet."""
 
-        super().__init__(coordinator, _id, spc, DEVICE_CLASS_PRESENCE)
+        super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.PRESENCE)
 
         # explicit typing
         self._surepy_entity: SurePet
@@ -227,7 +226,7 @@ class DeviceConnectivity(SurePetcareBinarySensor):
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare device connectivity sensor."""
 
-        super().__init__(coordinator, _id, spc, DEVICE_CLASS_CONNECTIVITY)
+        super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.CONNECTIVITY)
 
         self._attr_name = f"{self._name} Connectivity"
         self._attr_unique_id = (
