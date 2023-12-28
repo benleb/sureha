@@ -150,7 +150,6 @@ class Hub(SurePetcareBinarySensor):
 
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare Hub."""
-        #super().__init__(coordinator, _id, spc, DEVICE_CLASS_CONNECTIVITY)
         super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.CONNECTIVITY)
 
         if self._attr_device_info:
@@ -183,7 +182,6 @@ class Pet(SurePetcareBinarySensor):
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare Pet."""
 
-        #super().__init__(coordinator, _id, spc, DEVICE_CLASS_PRESENCE)
         super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.PRESENCE)
 
         # explicit typing
@@ -228,7 +226,6 @@ class DeviceConnectivity(SurePetcareBinarySensor):
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare device connectivity sensor."""
 
-        #super().__init__(coordinator, _id, spc, DEVICE_CLASS_CONNECTIVITY)
         super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.CONNECTIVITY)
 
         self._attr_name = f"{self._name} Connectivity"
