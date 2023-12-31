@@ -328,6 +328,8 @@ class Battery(SurePetcareSensor):
         if battery := cast(SurepyDevice, self._coordinator.data[self._id]):
 
             self._surepy_entity = battery
+            self.device_class = SensorDeviceClass.BATTERY
+            self.native_unit_of_measurement=PERCENTAGE
             battery_level = battery.calculate_battery_level(
                 voltage_full=self.voltage_full, voltage_low=self.voltage_low
             )
