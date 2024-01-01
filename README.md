@@ -1,3 +1,13 @@
+This is a fork from the original SureHA custom component provided by @benleb.
+The goal of this fork is to provide improvements on some areas...
+Unfortunately, I don't own some of the devices, like felaqua or feeder, therefore, I cannot validate and test changes I've made there.
+
+If you are interested in testing and providing feedback, please let me know in the discussions.
+
+--------------------
+Original Readme:
+------
+
 # SureHA 🐾
 
 > documentation is currently in a bad state. I am aware of this and working on it!

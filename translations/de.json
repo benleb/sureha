@@ -1,0 +1,30 @@
+{
+    "config": {
+        "error": {
+            "invalid_auth": "Ungültige Authentifizierung",
+            "unknown": "Unerwarteter Fehler"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "password": "Passwort",
+                    "username": "Benutzername"
+                },
+                "description": "Mit dem Sure Petcare Konto anmelden.",
+                "title": "Sure Petcare"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "voltage_full": "Volt (Batterien voll)",
+                    "voltage_low": "Volt (Batterien leer)"
+                },
+                "description": "Batterie Optionen",
+                "title": "SureHA Opptionen"
+            }
+        }
+    }
+}
