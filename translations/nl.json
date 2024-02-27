@@ -1,0 +1,30 @@
+{
+    "config": {
+        "error": {
+            "invalid_auth": "Ongeldige authenticatie",
+            "unknown": "Onverwachte fout"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "password": "Wachtwoord",
+                    "username": "Gebruikersnaam"
+                },
+                "description": "Log in met je Sure Petcare account.",
+                "title": "Sure Petcare"
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "voltage_full": "Voltage (batterijen vol)",
+                    "voltage_low": "Voltage (batteries leeg)"
+                },
+                "description": "Batterij opties",
+                "title": "SureHA opties"
+            }
+        }
+    }
+}
