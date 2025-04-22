@@ -241,11 +241,17 @@ class DeviceConnectivity(SurePetcareBinarySensor):
         attrs: dict[str, Any] = {}
 
         if (device := self._coordinator.data[self._id]) and (
-            state := device.raw_data().get("status")
-        ):
+            state := device.raw_data().get("status", {})
+        ) and (bool(state.get("online", False))):
+            device_rssi = state.get("signal", {}).get("device_rssi")
+            self._attr_extra_state_attributes["device_rssi"] = f"{device_rssi:.2f}" if device_rssi else "Unknown"
+            hub_rssi = state.get("signal", {}).get("hub_rssi")
+            if hub_rssi is not None:
+                self._attr_extra_state_attributes["hub_rssi"] = f"{hub_rssi:.2f}"
+
             attrs = {
-                "device_rssi": f'{state["signal"]["device_rssi"]:.2f}',
-                "hub_rssi": f'{state["signal"]["hub_rssi"]:.2f}',
+                "device_rssi": device_rssi,
+                "hub_rssi": hub_rssi,
             }
 
         return attrs
