@@ -64,7 +64,7 @@ async def async_setup_entry(
 
     entities: list[Flap | Felaqua | Feeder | FeederBowl | Battery] = []
 
-    spc: SurePetcareAPI = hass.data[DOMAIN][SPC]
+    spc: SurePetcareAPI = hass.data[DOMAIN][config_entry.entry_id]
 
     for surepy_entity in spc.coordinator.data.values():
 
