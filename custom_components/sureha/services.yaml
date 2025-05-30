@@ -33,3 +33,47 @@ set_pet_location:
       required: true
       example: "Inside"
       selector: { select: { options: ["Inside", "Outside"] } }
+set_indoor_pet_mode:
+  name: Set Pet Indoor Only Mode
+  description: Sets a pet's profile to "indoor only" to prevent using the flap.
+  fields:
+    pet_id:
+      name: Pet ID
+      description: The ID of the pet to set to indoor only mode.
+      required: true
+      example: 31337
+      selector:
+        number:
+          min: 1
+          mode: box
+    device_id:
+      name: Device ID
+      description: The ID of the flap or feeder associated with the pet.
+      required: true
+      example: 123456
+      selector:
+        number:
+          min: 1
+          mode: box
+set_outdoor_pet_mode:
+  name: Set Pet Outdoor Mode
+  description: Sets a pet's profile to "outdoor" to allow using the flap.
+  fields:
+    pet_id:
+      name: Pet ID
+      description: The ID of the pet to set to outdoor mode.
+      required: true
+      example: 31337
+      selector:
+        number:
+          min: 1
+          mode: box
+    device_id:
+      name: Device ID
+      description: The ID of the flap or feeder associated with the pet.
+      required: true
+      example: 123456
+      selector:
+        number:
+          min: 1
+          mode: box
