@@ -27,3 +27,6 @@ ATTR_LOCK_STATE = "lock_state"
 SERVICE_PET_LOCATION = "set_pet_location"
 ATTR_PET_ID = "pet_id"
 ATTR_WHERE = "where"
+
+SERVICE_SET_INDOOR_PET_MODE = "set_indoor_pet_mode"
+SERVICE_SET_OUTDOOR_PET_MODE = "set_outdoor_pet_mode"
