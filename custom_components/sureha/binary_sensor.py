@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,14 +84,12 @@ class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
         self._coordinator = coordinator
 
-        self._surepy_entity: SurepyEntity = self._coordinator.data[self._id]
+        self._surepy_entity: SurepyEntity = self._coordinator.data[_id]
         self._state: Any = self._surepy_entity.raw_data().get("status", {})
 
         type_name = self._surepy_entity.type.name.replace("_", " ").title()
 
         self._name: str = (
-            # cover edge case where a device has no name set
-            # (dont know how to do this but people have managed to do it ¯\_(ツ)_/¯)
             self._surepy_entity.name
             if self._surepy_entity.name
             else f"Unnamed {type_name}"
@@ -188,13 +186,36 @@ class Pet(SurePetcareBinarySensor):
         super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.PRESENCE)
 
         # explicit typing
-        self._surepy_entity: SurePet
+        self._surepy_entity: SurePet = cast(SurePet, self._surepy_entity) # Cast here for type hints
+
         self._pet_id = _id # Store pet ID
         self._tag_id = self._surepy_entity.tag_id # Store tag ID
+        self._spc = spc # Store spc for access to coordinator.data in __init__
 
-        # Get _device_id from raw_data['position']
-        # This ensures we identify the controlling device (e.g., flap) for this pet.
+        # --- REVISED LOGIC FOR _device_id in Pet Binary Sensor ---
+        # Determine _device_id in __init__ using the same robust logic as switch.py
+        # Prioritize flap association for mode control, as per user's requirement.
         self._device_id = self._surepy_entity.raw_data().get('position', {}).get('device_id')
+        _LOGGER.debug(f"Pet Binary Sensor Setup: Pet {self._surepy_entity.name} (ID: {self._pet_id}) initial _device_id from position: {self._device_id}")
+
+        if self._device_id is None and self._tag_id is not None:
+            _LOGGER.debug(f"Pet Binary Sensor Setup: _device_id is None for {self._surepy_entity.name}. Searching ALL FLAP devices for tag_id: {self._tag_id}")
+            
+            found_flap_id_init = None
+            for device_id, device_entity in spc.coordinator.data.items():
+                if isinstance(device_entity, SurepyDevice) and device_entity.type in [EntityType.CAT_FLAP, EntityType.PET_FLAP]:
+                    device_raw_data = device_entity.raw_data()
+                    if 'tags' in device_raw_data and isinstance(device_raw_data['tags'], list):
+                        for tag_entry in device_raw_data['tags']:
+                            if tag_entry.get('id') == self._tag_id:
+                                found_flap_id_init = device_id
+                                _LOGGER.debug(f"Pet Binary Sensor Setup: Found tag {self._tag_id} on FLAP device {device_entity.name} (ID: {device_id}). Prioritizing this for _device_id.")
+                                break
+                        if found_flap_id_init:
+                            break
+            self._device_id = found_flap_id_init # Set _device_id to found flap ID, or None if no flap found.
+            _LOGGER.debug(f"Pet Binary Sensor Setup: Final _device_id for {self._surepy_entity.name}: {self._device_id}")
+        # --- END REVISED LOGIC ---
 
         # picture of the pet that can be added via the sure app/website
         self._attr_entity_picture = self._surepy_entity.photo_url
@@ -203,53 +224,61 @@ class Pet(SurePetcareBinarySensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the additional attrs."""
 
-        pet: SurePet = self._coordinator.data.get(self._pet_id) # Use .get() for safer access
+        pet: SurePet = cast(SurePet, self._coordinator.data.get(self._pet_id))
         if not pet:
             _LOGGER.debug(f"DEBUG: Pet {self._pet_id} not found in coordinator data for extra_state_attributes.")
-            return {} # Return empty if pet data is missing
+            return {} 
 
         attrs: dict[str, Any] = {
             "since": pet.location.since,
             "where": pet.location.where,
-            **pet.raw_data(), # Keep this to include other raw data from the pet
+            **pet.raw_data(), 
         }
-        profile_id = None # Initialize profile_id to None
+        profile_id = None 
 
-        # Use the stored _tag_id for consistency
         pet_tag_id = self._tag_id
         if not pet_tag_id:
             _LOGGER.debug(f"DEBUG: Pet {pet.name} (ID: {pet.id}) has no 'tag_id' associated. Cannot determine profile_id.")
-            return attrs # No tag_id means no profile_id can be found this way
+            return attrs 
 
-        # Prioritize checking the specific controlling device (flap/feeder) first
-        # This is the same logic that fixed the switch's state.
-        if self._device_id: # Only proceed if we have a controlling device ID
-            controlling_device_data = self.coordinator.data.get(self._device_id)
 
-            if controlling_device_data and 'tags' in controlling_device_data.raw_data() and isinstance(controlling_device_data.raw_data()['tags'], list):
+        # Use the _device_id determined in __init__ (which prioritizes flaps)
+        if self._device_id: 
+            controlling_device_data = self._spc.coordinator.data.get(self._device_id)
+
+            if controlling_device_data:
                 _LOGGER.debug(f"DEBUG: Checking PRIMARY controlling device {controlling_device_data.name} (ID: {controlling_device_data.id}, Type: {controlling_device_data.type}) for pet tag {pet_tag_id}.")
-                for tag_entry in controlling_device_data.raw_data()['tags']:
-                    if tag_entry.get('id') == pet_tag_id and tag_entry.get('profile') is not None:
-                        profile_id = tag_entry.get('profile')
-                        _LOGGER.debug(f"DEBUG: Found profile_id {profile_id} for pet {pet.name} from PRIMARY device {controlling_device_data.name}.")
-                        break # Found the profile on the primary device, no need to search further
+                device_raw_data = controlling_device_data.raw_data()
+                if 'tags' in device_raw_data and isinstance(device_raw_data['tags'], list):
+                    for tag_entry in device_raw_data['tags']:
+                        if tag_entry.get('id') == pet_tag_id and tag_entry.get('profile') is not None:
+                            profile_id = tag_entry.get('profile')
+                            _LOGGER.debug(f"DEBUG: Found profile_id {profile_id} for pet {pet.name} from PRIMARY device {controlling_device_data.name}.")
+                            break 
+                else:
+                     _LOGGER.debug(f"DEBUG: Controlling Device {controlling_device_data.name} has no 'tags' or invalid 'tags' data.")
+            else:
+                _LOGGER.warning(f"DEBUG: Controlling device (ID: {self._device_id}) not found in coordinator data for pet {self._surepy_entity.name}. Cannot determine state.")
 
-        # If profile_id is still not found after checking the primary controlling device,
-        # fallback to iterating all other relevant devices (less efficient, but covers edge cases)
+
+        # Fallback to iterating all *relevant* devices (flaps and feeders) for attributes
+        # This fallback for attributes should still check feeders, as they also have profiles
+        # but the primary lookup ensures the most relevant device (flap) is checked first
         if profile_id is None:
             _LOGGER.debug(f"DEBUG: Profile for {pet.name} not found on primary device {self._device_id}. Falling back to searching all relevant devices for tags.")
-            for entity_obj in self._coordinator.data.values():
-                # Only check devices that are flaps/feeders and are NOT the primary controlling device
-                if entity_obj.type in [EntityType.CAT_FLAP, EntityType.PET_FLAP, EntityType.FEEDER] and entity_obj.id != self._device_id:
-                    device_raw_data = entity_obj.raw_data()
-                    if 'tags' in device_raw_data and isinstance(device_raw_data['tags'], list):
-                        for tag_entry in device_raw_data['tags']:
-                            if tag_entry.get('id') == pet_tag_id and tag_entry.get('profile') is not None:
-                                profile_id = tag_entry.get('profile')
-                                _LOGGER.debug(f"DEBUG: Found profile_id {profile_id} for pet {pet.name} from SECONDARY device {entity_obj.name} (ID: {entity_obj.id}).")
-                                break # Found the profile, exit inner loop
-                        if profile_id is not None:
-                            break # Found the profile, exit outer loop (device loop)
+            for entity_obj in self._spc.coordinator.data.values(): 
+                if isinstance(entity_obj, SurepyDevice) and entity_obj.id != self._device_id:
+                    # Check both flaps and feeders for profile attributes
+                    if entity_obj.type in [EntityType.CAT_FLAP, EntityType.PET_FLAP, EntityType.FEEDER]:
+                        device_raw_data = entity_obj.raw_data()
+                        if 'tags' in device_raw_data and isinstance(device_raw_data['tags'], list):
+                            for tag_entry in device_raw_data['tags']:
+                                if tag_entry.get('id') == pet_tag_id and tag_entry.get('profile') is not None:
+                                    profile_id = tag_entry.get('profile')
+                                    _LOGGER.debug(f"DEBUG: Found profile_id {profile_id} for pet {pet.name} from SECONDARY device {entity_obj.name} (ID: {entity_obj.id}).")
+                                    break 
+                            if profile_id is not None:
+                                break 
 
         # Assign profile_id and pet_mode if a valid profile_id was found
         if profile_id is not None:
@@ -259,7 +288,6 @@ class Pet(SurePetcareBinarySensor):
             elif profile_id == 2:
                 attrs["pet_mode"] = "Outdoor"
             else:
-                # Handle other potential profile_ids if they exist and are meaningful
                 attrs["pet_mode"] = f"Unknown Profile (ID: {profile_id})"
         else:
             _LOGGER.debug(f"DEBUG: Could not find profile_id for pet {pet.name} (ID: {pet.id}) after searching all relevant devices.")
@@ -269,10 +297,11 @@ class Pet(SurePetcareBinarySensor):
     @property
     def is_on(self) -> bool:
         """Return True if the pet is at home."""
+
         pet: SurePet
         inside: bool = False
 
-        if pet := self._coordinator.data.get(self._id): # Use .get() for safer access
+        if pet := cast(SurePet, self._coordinator.data.get(self._id)): 
             inside = bool(pet.location.where == Location.INSIDE)
 
         return inside
@@ -298,11 +327,14 @@ class DeviceConnectivity(SurePetcareBinarySensor):
         device: SurepyDevice
         attrs: dict[str, Any] = {}
 
-        if (device := self._coordinator.data[self._id]) and (
-            state := device.raw_data().get("status", {})
+        if (device := cast(SurepyDevice, self._coordinator.data.get(self._id))) and ( # Use .get() for safer access
+            state := device.raw_data().get("status")
         ) and (bool(state.get("online", False))):
             device_rssi = state.get("signal", {}).get("device_rssi")
-            self._attr_extra_state_attributes["device_rssi"] = f"{device_rssi:.2f}" if device_rssi else "Unknown"
+            # Ensure _attr_extra_state_attributes is initialized if it wasn't by base class
+            if not hasattr(self, '_attr_extra_state_attributes'):
+                self._attr_extra_state_attributes = {}
+            self._attr_extra_state_attributes["device_rssi"] = f"{device_rssi:.2f}" if device_rssi is not None else "Unknown" # Check for None
             hub_rssi = state.get("signal", {}).get("hub_rssi")
             if hub_rssi is not None:
                 self._attr_extra_state_attributes["hub_rssi"] = f"{hub_rssi:.2f}"
@@ -317,4 +349,8 @@ class DeviceConnectivity(SurePetcareBinarySensor):
     @property
     def is_on(self) -> bool:
         """Return True if the pet is at home."""
-        return bool(self.extra_state_attributes)
+        # It's safer to directly check the 'online' status for connectivity, not just extra_state_attributes
+        device = cast(SurepyDevice, self._coordinator.data.get(self._id))
+        if device and (status := device.raw_data().get("status")):
+            return bool(status.get("online", False))
+        return False # Default to False if data is missing or device is not online
