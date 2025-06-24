@@ -31,16 +31,18 @@ from .const import (
     DOMAIN,
     SERVICE_PET_LOCATION,
     SERVICE_SET_LOCK_STATE,
-    SPC,
     SURE_API_TIMEOUT,
     SURE_BATT_VOLTAGE_FULL,
     SURE_BATT_VOLTAGE_LOW,
+    SERVICE_SET_INDOOR_PET_MODE,
+    SERVICE_SET_OUTDOOR_PET_MODE,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.DEVICE_TRACKER, Platform.SENSOR]
-SCAN_INTERVAL = timedelta(minutes=3)
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.DEVICE_TRACKER, Platform.SENSOR, Platform.SWITCH]
+# Harmonize SCAN_INTERVAL comment with coordinator's update_interval
+SCAN_INTERVAL = timedelta(seconds=150)
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -60,14 +62,14 @@ CATS = [
     "/ᐠ｡▿｡ᐟ\\*ᵖᵘʳʳ",
     "/ᐠ_ꞈ_ᐟ\\ɴʏᴀ~",
     "/ᐠ ._. ᐟ\\ﾉ",
-    "/ᐠ. ｡.ᐟ\\ᵐᵉᵒʷˎˊ",
+    "/\x1b[38;2;255;26;102m·\x1b[0m. ｡.ᐟ\\ᵐᵉᵒʷˎˊ",
     "ᶠᵉᵉᵈ ᵐᵉ /ᐠ-ⱉ-ᐟ\\ﾉ",
     "(≗ᆽ ≗)ﾉ",
 ]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up."""
+    """Set up Surepetcare from a config entry."""
 
     hass.data.setdefault(DOMAIN, {})
 
@@ -85,7 +87,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         surepy = Surepy(
             entry.data[CONF_USERNAME],
             entry.data[CONF_PASSWORD],
-            auth_token=entry.data[CONF_TOKEN] if CONF_TOKEN in entry.data else None,
+            auth_token=entry.data.get(CONF_TOKEN),
             api_timeout=SURE_API_TIMEOUT,
             session=async_get_clientsession(hass),
         )
@@ -93,7 +95,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER.error(
             "🐾 \x1b[38;2;255;26;102m·\x1b[0m unable to auth. to surepetcare.io: wrong credentials"
         )
-        return False
+        raise ConfigEntryAuthFailed
     except SurePetcareError as error:
         _LOGGER.error(
             "🐾 \x1b[38;2;255;26;102m·\x1b[0m unable to connect to surepetcare.io: %s",
@@ -104,10 +106,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     spc = SurePetcareAPI(hass, entry, surepy)
 
     async def async_update_data():
-
+        """Fetch data from Sure Petcare API."""
         try:
-            # asyncio.TimeoutError and aiohttp.ClientError already handled
-
             async with async_timeout.timeout(20):
                 return await spc.surepy.get_entities(refresh=True)
 
@@ -115,6 +115,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise ConfigEntryAuthFailed from err
         except SurePetcareError as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
+        except Exception as err:
+            _LOGGER.error(f"Unexpected error during data update: {err}")
+            raise UpdateFailed(f"Unexpected error: {err}") from err
 
     spc.coordinator = DataUpdateCoordinator(
         hass,
@@ -126,9 +129,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await spc.coordinator.async_config_entry_first_refresh()
 
-    hass.data[DOMAIN][SPC] = spc
+    hass.data[DOMAIN][entry.entry_id] = spc
 
-    return await spc.async_setup()
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    await spc.async_setup()
+
+    return True
 
 
 class SurePetcareAPI:
@@ -140,21 +147,18 @@ class SurePetcareAPI:
         """Initialize the Sure Petcare object."""
 
         self.coordinator: DataUpdateCoordinator
-
         self.hass = hass
         self.config_entry = config_entry
         self.surepy = surepy
-
         self.states: dict[int, Any] = {}
 
     async def set_pet_location(self, pet_id: int, location: Location) -> None:
         """Update the lock state of a flap."""
-
         await self.surepy.sac.set_pet_location(pet_id, location)
+        await self.coordinator.async_request_refresh()
 
     async def set_lock_state(self, flap_id: int, state: str) -> None:
         """Update the lock state of a flap."""
-
         # https://github.com/PyCQA/pylint/issues/2062
         # pylint: disable=no-member
         lock_states = {
@@ -166,26 +170,127 @@ class SurePetcareAPI:
 
         # elegant functions dict to choose the right function | idea by @janiversen
         await lock_states[state.lower()](flap_id)
+        await self.coordinator.async_request_refresh()
+
+    # --- New Methods for Pet Mode ---
+    async def set_pet_indoor_mode(self, device_id: int, tag_id: int) -> None:
+        """Set a pet to indoor mode (profile_id=3) using tag_id."""
+        _LOGGER.debug(f"Calling surepy.sac.set_indoor_pet for tag_id: {tag_id}, device_id: {device_id}")
+        await self.surepy.sac.set_indoor_pet(device_id=device_id, tag_id=tag_id)
+        await self.coordinator.async_request_refresh()
+
+
+    async def set_pet_outdoor_mode(self, device_id: int, tag_id: int) -> None:
+        """Set a pet to outdoor mode (profile_id=2) using tag_id."""
+        _LOGGER.debug(f"Calling surepy.sac.set_outdoor_pet for tag_id: {tag_id}, device_id: {device_id}")
+        await self.surepy.sac.set_outdoor_pet(device_id=device_id, tag_id=tag_id)
+        await self.coordinator.async_request_refresh()
+    # --- End New Methods ---
 
     async def async_setup(self) -> bool:
-        """Set up the Sure Petcare integration."""
+        """Set up the Sure Petcare integration services."""
 
         _LOGGER.info("")
         _LOGGER.info(
             "%s %s", " \x1b[38;2;255;26;102m·\x1b[0m" * 24, choice(CATS)  # nosec
         )
-        _LOGGER.info("  🐾   meeowww..! to the SureHA integration!")
-        _LOGGER.info("  🐾     code & issues: https://github.com/benleb/sureha")
+        _LOGGER.info("  🐾    meeowww..! to the SureHA integration!")
+        _LOGGER.info("  🐾      code & issues: https://github.com/benleb/sureha")
         _LOGGER.info(" \x1b[38;2;255;26;102m·\x1b[0m" * 30)
         _LOGGER.info("")
-
-        await self.hass.config_entries.async_forward_entry_setups(self.config_entry, PLATFORMS)
 
         surepy_entities: list[SurepyEntity] = self.coordinator.data.values()
 
         pet_ids = [
             entity.id for entity in surepy_entities if entity.type == EntityType.PET
         ]
+
+        # --- Service Registration for Pet Mode ---
+        flap_ids = [
+            entity.id
+            for entity in surepy_entities
+            if entity.type in [EntityType.CAT_FLAP, EntityType.PET_FLAP, EntityType.FEEDER]
+        ]
+        all_device_ids = sorted(list(set(flap_ids)))
+
+        set_indoor_pet_mode_schema = vol.Schema(
+            {
+                vol.Required(ATTR_PET_ID): vol.Any(cv.positive_int, vol.In(pet_ids)),
+                vol.Required("device_id"): vol.Any(cv.positive_int, vol.In(all_device_ids)),
+            }
+        )
+
+        async def handle_set_indoor_pet_mode(call: Any) -> None:
+            """Call when setting a pet to indoor mode."""
+            pet_id_from_service = call.data.get(ATTR_PET_ID) # This is the pet_id from the service call
+            device_id = call.data.get("device_id")
+
+            # --- NEW LOOKUP: Find the tag_id from the pet_id ---
+            tag_id_for_service = None
+            for entity_obj in self.coordinator.data.values():
+                if entity_obj.type == EntityType.PET and entity_obj.id == pet_id_from_service:
+                    tag_id_for_service = entity_obj.tag_id
+                    break
+
+            if tag_id_for_service is None:
+                _LOGGER.error(f"Could not find tag_id for pet_id: {pet_id_from_service}. Cannot set indoor mode.")
+                return
+            # --- END NEW LOOKUP ---
+
+            _LOGGER.info(f"Home Assistant service call: surepy.set_indoor_pet_mode for pet_id: {pet_id_from_service} (tag_id: {tag_id_for_service}), device_id: {device_id}")
+            try:
+                await self.set_pet_indoor_mode(device_id, tag_id_for_service)
+            except SurePetcareError as err:
+                _LOGGER.error(f"Failed to set pet {pet_id_from_service} on device {device_id} to indoor mode: {err}")
+            except Exception as err:
+                _LOGGER.exception(f"An unexpected error occurred while setting pet {pet_id_from_service} on device {device_id} to indoor mode: {err}")
+
+        self.hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_INDOOR_PET_MODE,
+            handle_set_indoor_pet_mode,
+            schema=set_indoor_pet_mode_schema,
+        )
+
+        set_outdoor_pet_mode_schema = vol.Schema(
+            {
+                vol.Required(ATTR_PET_ID): vol.Any(cv.positive_int, vol.In(pet_ids)),
+                vol.Required("device_id"): vol.Any(cv.positive_int, vol.In(all_device_ids)),
+            }
+        )
+
+        async def handle_set_outdoor_pet_mode(call: Any) -> None:
+            """Call when setting a pet to outdoor mode."""
+            pet_id_from_service = call.data.get(ATTR_PET_ID) # This is the pet_id from the service call
+            device_id = call.data.get("device_id")
+
+            # --- NEW LOOKUP: Find the tag_id from the pet_id ---
+            tag_id_for_service = None
+            for entity_obj in self.coordinator.data.values():
+                if entity_obj.type == EntityType.PET and entity_obj.id == pet_id_from_service:
+                    tag_id_for_service = entity_obj.tag_id
+                    break
+
+            if tag_id_for_service is None:
+                _LOGGER.error(f"Could not find tag_id for pet_id: {pet_id_from_service}. Cannot set outdoor mode.")
+                return
+            # --- END NEW LOOKUP ---
+
+            _LOGGER.info(f"Home Assistant service call: surepy.set_outdoor_pet_mode for pet_id: {pet_id_from_service} (tag_id: {tag_id_for_service}), device_id: {device_id}")
+            try:
+                await self.set_pet_outdoor_mode(device_id, tag_id_for_service)
+            except SurePetcareError as err:
+                _LOGGER.error(f"Failed to set pet {pet_id_from_service} on device {device_id} to outdoor mode: {err}")
+            except Exception as err:
+                _LOGGER.exception(f"An unexpected error occurred while setting pet {pet_id_from_service} on device {device_id} to outdoor mode: {err}")
+
+        self.hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_OUTDOOR_PET_MODE,
+            handle_set_outdoor_pet_mode,
+            schema=set_outdoor_pet_mode_schema,
+        )
+        # --- End Service Registration ---
 
         pet_location_service_schema = vol.Schema(
             {
@@ -208,13 +313,10 @@ class SurePetcareAPI:
             """Call when setting the lock state."""
 
             try:
-
                 if (pet_id := int(call.data.get(ATTR_PET_ID))) and (
                     where := str(call.data.get(ATTR_WHERE))
                 ):
-
                     await self.set_pet_location(pet_id, Location[where.upper()])
-                    await self.coordinator.async_request_refresh()
 
             except ValueError as error:
                 _LOGGER.error(
@@ -235,7 +337,6 @@ class SurePetcareAPI:
             lock_state = call.data.get(ATTR_LOCK_STATE)
 
             await self.set_lock_state(flap_id, lock_state)
-            await self.coordinator.async_request_refresh()
 
         flap_ids = [
             entity.id

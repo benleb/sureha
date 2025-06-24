@@ -21,7 +21,7 @@ SOURCE_TYPE_FLAP = "flap"
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Set up the Pet tracker from config entry."""
 
-    spc: SurePetcareAPI = hass.data[DOMAIN][SPC]
+    spc: SurePetcareAPI = hass.data[DOMAIN][config_entry.entry_id]
 
     async_add_entities(
         [
