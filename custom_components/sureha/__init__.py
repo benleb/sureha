@@ -9,13 +9,14 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from surepy import Surepy
+from surepy.const import MESTART_RESOURCE
 from surepy.entities import SurepyEntity
 from surepy.enums import EntityType, Location, LockState
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
@@ -97,12 +98,40 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         try:
             async with asyncio.timeout(20):
-                return await spc.surepy.get_entities(refresh=True)
+                entities = await spc.surepy.get_entities(refresh=True)
+
+                if not entities:
+                    # nothing new from the API (e.g. "not modified"): surepy
+                    # returns an empty result, so rebuild from its cached data
+                    entities = await spc.surepy.get_entities(refresh=False)
 
         except SurePetcareAuthenticationError as err:
             raise ConfigEntryAuthFailed from err
         except SurePetcareError as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
+
+        if not entities:
+            raise UpdateFailed("No data received from the Sure Petcare API")
+
+        # surepy never forgets an entity once seen: drop pets/devices that are
+        # no longer in the account according to the latest API response
+        if account_ids := _account_entity_ids(spc.surepy):
+            if stale_ids := set(entities) - account_ids:
+                _LOGGER.info(
+                    "🐾 no longer in the Sure Petcare account: %s", sorted(stale_ids)
+                )
+                for stale_id in stale_ids:
+                    spc.surepy.entities.pop(stale_id, None)
+                entities = {
+                    _id: entity
+                    for _id, entity in entities.items()
+                    if _id in account_ids
+                }
+                if spc.setup_done:
+                    # reload so their entities are removed from Home Assistant
+                    hass.config_entries.async_schedule_reload(entry.entry_id)
+
+        return entities
 
     spc.coordinator = DataUpdateCoordinator(
         hass,
@@ -114,12 +143,65 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await spc.coordinator.async_config_entry_first_refresh()
 
+    _async_remove_stale_registry_entries(hass, entry, set(spc.coordinator.data))
+
     hass.data[DOMAIN][SPC] = spc
 
     # reload the entry when the options (battery voltages) change
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return await spc.async_setup()
+
+
+def _account_entity_ids(surepy: Surepy) -> set[int]:
+    """IDs of the pets/devices in the latest response of the Sure Petcare API."""
+
+    resources = getattr(surepy.sac, "resources", None)
+    if not isinstance(resources, dict):
+        return set()
+
+    data = (resources.get(MESTART_RESOURCE) or {}).get("data") or {}
+
+    return {
+        int(item["id"])
+        for item in [*data.get("devices", []), *data.get("pets", [])]
+        if "id" in item
+    }
+
+
+@callback
+def _async_remove_stale_registry_entries(
+    hass: HomeAssistant, entry: ConfigEntry, current_ids: set[int]
+) -> None:
+    """Remove devices/entities of pets and devices that left the account."""
+
+    if not current_ids:
+        return
+
+    device_registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        device_ids: set[int] = set()
+        for domain, identifier in device.identifiers:
+            if domain == DOMAIN and str(identifier).isdigit():
+                device_ids.add(int(identifier))
+
+        if device_ids and not device_ids & current_ids:
+            _LOGGER.info("🐾 removing stale device: %s", device.name)
+            device_registry.async_update_device(
+                device.id, remove_config_entry_id=entry.entry_id
+            )
+
+    # entities without a device: the pet device trackers
+    entity_registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if (
+            entity.device_id is None
+            and entity.unique_id.endswith("_pet_tracker")
+            and (pet_id := entity.unique_id.removesuffix("_pet_tracker")).isdigit()
+            and int(pet_id) not in current_ids
+        ):
+            _LOGGER.info("🐾 removing stale entity: %s", entity.entity_id)
+            entity_registry.async_remove(entity.entity_id)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -211,6 +293,7 @@ class SurePetcareAPI:
         self.surepy = surepy
 
         self.states: dict[int, Any] = {}
+        self.setup_done = False
 
     @property
     def ignored_ids(self) -> set[int]:
@@ -349,5 +432,7 @@ class SurePetcareAPI:
             handle_set_lock_state,
             schema=lock_state_service_schema,
         )
+
+        self.setup_done = True
 
         return True

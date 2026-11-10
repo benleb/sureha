@@ -187,3 +187,54 @@ async def test_remove_pet_device(hass, hass_ws_client):
         await hass.async_block_till_done()
     assert entry.options["ignored_ids"] == []
     assert hass.states.get("binary_sensor.pet_thorin") is not None
+
+
+async def test_pet_removed_from_account(hass):
+    """Pets that left the Sure Petcare account are cleaned up automatically."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from surepy.const import MESTART_RESOURCE
+
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="u",
+                            data={CONF_USERNAME: "u", CONF_PASSWORD: "p", CONF_TOKEN: "t"})
+    entry.add_to_hass(hass)
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+
+    # leftovers of a pet removed while Home Assistant was not running
+    old = dev_reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, 31337)}, name="Old")
+    ent_reg.async_get_or_create("binary_sensor", DOMAIN, f"{HH}-31337", config_entry=entry, device_id=old.id)
+    ent_reg.async_get_or_create("device_tracker", DOMAIN, "31337_pet_tracker", config_entry=entry)
+
+    account = {"devices": [{"id": i} for i in (1, 2, 3, 4)], "pets": [{"id": 10}, {"id": 11}]}
+    surepy = make_surepy()
+    surepy.entities = {}
+    surepy.sac.resources = {MESTART_RESOURCE: {"data": account}}
+
+    async def get_entities(refresh=False):
+        # like surepy: entities seen once are returned forever
+        ids = {i["id"] for i in account["devices"] + account["pets"]}
+        surepy.entities.update({k: v for k, v in entities().items() if k in ids})
+        return surepy.entities
+
+    surepy.get_entities = AsyncMock(side_effect=get_entities)
+
+    with patch("custom_components.sureha.Surepy", return_value=surepy):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        assert dev_reg.async_get(old.id) is None
+        assert not [e for e in er.async_entries_for_config_entry(ent_reg, entry.entry_id) if "31337" in e.unique_id]
+        assert hass.states.get("binary_sensor.pet_thorin") is not None
+        assert hass.states.get("device_tracker.pet_thorin") is not None
+
+        # the pet is deleted in the Sure Petcare app while HA is running
+        account["pets"] = [{"id": 11}]
+        await hass.data[DOMAIN]["spc"].coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert hass.states.get("binary_sensor.pet_thorin") is None
+    assert hass.states.get("device_tracker.pet_thorin") is None
+    assert dev_reg.async_get_device(identifiers={(DOMAIN, 10)}) is None
+    assert not [e for e in er.async_entries_for_config_entry(ent_reg, entry.entry_id) if "thorin" in e.entity_id]
+    assert hass.states.get("binary_sensor.pet_nopos") is not None
+    assert hass.states.get("sensor.cat_flap_flap") is not None

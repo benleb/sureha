@@ -92,6 +92,8 @@ The state is the battery level in % (calculated with the voltages set in the int
 
 ## Removing a pet or device
 
+Pets and devices that are removed from your Sure Petcare account are removed from Home Assistant automatically (within a few minutes, or at the next restart). No new login is needed.
+
 If a pet or device is still listed in your Sure Petcare account but you no longer want it in Home Assistant:
 
 1. Go to **Settings → Devices & services → SureHA** and open the pet/device.
