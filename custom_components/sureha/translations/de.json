@@ -24,10 +24,14 @@
             "init": {
                 "data": {
                     "voltage_full": "Volt (Batterien voll)",
-                    "voltage_low": "Volt (Batterien leer)"
+                    "voltage_low": "Volt (Batterien leer)",
+                    "ignored_ids": "Ignorierte Haustiere/Geräte"
                 },
                 "description": "Batterie Optionen",
-                "title": "SureHA Optionen"
+                "title": "SureHA Optionen",
+                "data_description": {
+                    "ignored_ids": "Ausgewählte Haustiere und Geräte werden in Home Assistant nicht angelegt."
+                }
             }
         },
         "error": {

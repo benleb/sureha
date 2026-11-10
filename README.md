@@ -90,6 +90,16 @@ The state is the battery level in % (calculated with the voltages set in the int
 </details>
 
 
+## Removing a pet or device
+
+If a pet or device is still listed in your Sure Petcare account but you no longer want it in Home Assistant:
+
+1. Go to **Settings → Devices & services → SureHA** and open the pet/device.
+2. Use the **⋮ menu → Delete**.
+
+Its entities are removed and it is added to the *ignored* list, so it is not created again.
+To bring it back, open the integration's **Configure** dialog and untick it under *Ignored pets/devices*.
+
 ## Services
 
 This project allows you to use the following services in Home Assistant:<br>

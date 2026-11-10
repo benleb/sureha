@@ -139,3 +139,51 @@ async def test_setup_services_unload(hass):
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
     assert not hass.services.has_service(DOMAIN, "set_lock_state")
+
+
+async def test_remove_pet_device(hass, hass_ws_client):
+    """A pet still reported by Sure Petcare can be deleted and stays away."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "config", {})
+    entry, surepy = await setup(hass)
+    dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
+
+    def pet_entities():
+        return sorted(e.entity_id for e in er.async_entries_for_config_entry(ent_reg, entry.entry_id) if "thorin" in e.entity_id)
+
+    assert pet_entities() == ["binary_sensor.pet_thorin", "device_tracker.pet_thorin"]
+    device = dev_reg.async_get_device(identifiers={(DOMAIN, 10)})
+    assert device is not None
+
+    client = await hass_ws_client(hass)
+    with patch("custom_components.sureha.Surepy", return_value=surepy):
+        await client.send_json_auto_id(
+            {"type": "config/device_registry/remove_config_entry",
+             "config_entry_id": entry.entry_id, "device_id": device.id}
+        )
+        response = await client.receive_json()
+        assert response["success"], response
+        await hass.async_block_till_done()
+
+    assert entry.options["ignored_ids"] == [10]
+    assert entry.state is ConfigEntryState.LOADED
+    assert dev_reg.async_get_device(identifiers={(DOMAIN, 10)}) is None
+    assert pet_entities() == []
+    assert hass.states.get("binary_sensor.pet_thorin") is None
+    # the other pet and the devices are untouched
+    assert hass.states.get("binary_sensor.pet_nopos") is not None
+    assert hass.states.get("sensor.cat_flap_flap") is not None
+
+    # it can be restored from the options
+    r = await hass.config_entries.options.async_init(entry.entry_id)
+    assert r["type"] == FlowResultType.FORM
+    with patch("custom_components.sureha.Surepy", return_value=surepy):
+        r = await hass.config_entries.options.async_configure(
+            r["flow_id"], {"voltage_low": 1.25, "voltage_full": 1.6, "ignored_ids": []}
+        )
+        assert r["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+    assert entry.options["ignored_ids"] == []
+    assert hass.states.get("binary_sensor.pet_thorin") is not None

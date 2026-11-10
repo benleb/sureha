@@ -27,7 +27,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     async_add_entities(
         [
             SureDeviceTracker(spc.coordinator, pet.id, spc)
-            for pet in spc.coordinator.data.values()
+            for pet in spc.entities
             if pet.type == EntityType.PET
         ]
     )
@@ -50,7 +50,6 @@ class SureDeviceTracker(CoordinatorEntity, ScannerEntity):
             raise ValueError("Pet ID is required")
 
         self._id = _id
-        self._attr_unique_id = f"{self._id}_pet_tracker"
 
         self._surepy_entity: SurePet = self._coordinator.data[self._id]
         type_name = self._surepy_entity.type.name.replace("_", " ").title()
@@ -66,6 +65,11 @@ class SureDeviceTracker(CoordinatorEntity, ScannerEntity):
 
         # picture of the pet that can be added via the sure app/website
         self._attr_entity_picture = self._surepy_entity.photo_url
+
+    @property
+    def unique_id(self) -> str:
+        """Return a unique ID (ScannerEntity only provides one for MAC addresses)."""
+        return f"{self._id}_pet_tracker"
 
     @property
     def is_connected(self) -> bool:

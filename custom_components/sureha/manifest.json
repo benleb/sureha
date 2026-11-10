@@ -1,7 +1,7 @@
 {
     "domain": "sureha",
     "name": "SureHA",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "documentation": "https://github.com/scoprire87/sureha",
     "issue_tracker": "https://github.com/scoprire87/sureha/issues",
     "config_flow": true,

@@ -26,7 +26,11 @@
                 "description": "Battery options",
                 "data": {
                     "voltage_full": "Voltage (batteries full)",
-                    "voltage_low": "Voltage (batteries low)"
+                    "voltage_low": "Voltage (batteries low)",
+                    "ignored_ids": "Ignored pets/devices"
+                },
+                "data_description": {
+                    "ignored_ids": "Selected pets and devices are not created in Home Assistant."
                 }
             }
         },

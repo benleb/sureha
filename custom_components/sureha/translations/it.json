@@ -24,10 +24,14 @@
             "init": {
                 "data": {
                     "voltage_full": "Volt (batterie cariche)",
-                    "voltage_low": "Volt (batterie scariche)"
+                    "voltage_low": "Volt (batterie scariche)",
+                    "ignored_ids": "Animali/dispositivi ignorati"
                 },
                 "description": "Opzioni batteria",
-                "title": "Opzioni SureHA"
+                "title": "Opzioni SureHA",
+                "data_description": {
+                    "ignored_ids": "Gli animali e i dispositivi selezionati non vengono creati in Home Assistant."
+                }
             }
         },
         "error": {

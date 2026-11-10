@@ -56,7 +56,7 @@ async def async_setup_entry(
     )
     voltage_low = float(config_entry.options.get(ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW))
 
-    for surepy_entity in spc.coordinator.data.values():
+    for surepy_entity in spc.entities:
 
         status = surepy_entity.raw_data().get("status") or {}
 

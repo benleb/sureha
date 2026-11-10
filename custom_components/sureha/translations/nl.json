@@ -24,10 +24,14 @@
             "init": {
                 "data": {
                     "voltage_full": "Voltage (batterijen vol)",
-                    "voltage_low": "Voltage (batterijen leeg)"
+                    "voltage_low": "Voltage (batterijen leeg)",
+                    "ignored_ids": "Genegeerde huisdieren/apparaten"
                 },
                 "description": "Batterij opties",
-                "title": "SureHA opties"
+                "title": "SureHA opties",
+                "data_description": {
+                    "ignored_ids": "Geselecteerde huisdieren en apparaten worden niet aangemaakt in Home Assistant."
+                }
             }
         },
         "error": {

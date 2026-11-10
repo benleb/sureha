@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant import config_entries, core, data_entry_flow
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
 from homeassistant.core import callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from surepy import Surepy
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
@@ -16,7 +17,9 @@ import voluptuous as vol
 from .const import (
     ATTR_VOLTAGE_FULL,
     ATTR_VOLTAGE_LOW,
+    CONF_IGNORED_IDS,
     DOMAIN,
+    SPC,
     SURE_API_TIMEOUT,
     SURE_BATT_VOLTAGE_FULL,
     SURE_BATT_VOLTAGE_LOW,
@@ -127,7 +130,25 @@ class SureHAOptionsFlowHandler(config_entries.OptionsFlow):
             if user_input[ATTR_VOLTAGE_LOW] >= user_input[ATTR_VOLTAGE_FULL]:
                 errors["base"] = "invalid_voltage"
             else:
-                return self.async_create_entry(title="SureHA Options", data=user_input)
+                return self.async_create_entry(
+                    title="SureHA Options",
+                    data={
+                        **user_input,
+                        CONF_IGNORED_IDS: sorted(
+                            int(_id) for _id in user_input.get(CONF_IGNORED_IDS, [])
+                        ),
+                    },
+                )
+
+        # pets/devices that can be hidden from Home Assistant
+        ignored = [
+            str(_id) for _id in self.config_entry.options.get(CONF_IGNORED_IDS, [])
+        ]
+        choices: dict[str, str] = {_id: f"ID {_id}" for _id in ignored}
+        if (spc := self.hass.data.get(DOMAIN, {}).get(SPC)) and spc.coordinator.data:
+            for entity in spc.coordinator.data.values():
+                type_name = entity.type.name.replace("_", " ").title()
+                choices[str(entity.id)] = f"{type_name} {entity.name} ({entity.id})"
 
         options = {
             vol.Optional(
@@ -143,6 +164,11 @@ class SureHAOptionsFlowHandler(config_entries.OptionsFlow):
                 ),
             ): float,
         }
+
+        if choices:
+            options[vol.Optional(CONF_IGNORED_IDS, default=ignored)] = cv.multi_select(
+                choices
+            )
 
         return self.async_show_form(
             step_id="init", data_schema=vol.Schema(options), errors=errors

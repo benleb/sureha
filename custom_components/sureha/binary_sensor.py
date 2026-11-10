@@ -32,7 +32,7 @@ async def async_setup_entry(
 
     spc: SurePetcareAPI = hass.data[DOMAIN][SPC]
 
-    for surepy_entity in spc.coordinator.data.values():
+    for surepy_entity in spc.entities:
 
         if surepy_entity.type == EntityType.PET:
             entities.append(Pet(spc.coordinator, surepy_entity.id, spc))

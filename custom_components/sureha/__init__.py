@@ -12,6 +12,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME, Platfo
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from surepy import Surepy
@@ -28,6 +29,7 @@ from .const import (
     ATTR_VOLTAGE_FULL,
     ATTR_VOLTAGE_LOW,
     ATTR_WHERE,
+    CONF_IGNORED_IDS,
     DOMAIN,
     SERVICE_PET_LOCATION,
     SERVICE_SET_LOCK_STATE,
@@ -125,6 +127,60 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+def get_ignored_ids(entry: ConfigEntry) -> set[int]:
+    """Return the IDs of the pets/devices the user removed from Home Assistant."""
+
+    ignored: set[int] = set()
+    for value in entry.options.get(CONF_IGNORED_IDS, []):
+        try:
+            ignored.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return ignored
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow deleting a pet/device from the UI.
+
+    If Sure Petcare still reports it (e.g. a pet that is still in the account),
+    its ID is added to the ignored list so it is not created again.
+    """
+
+    device_ids: set[int] = set()
+    for domain, identifier in device_entry.identifiers:
+        if domain != DOMAIN:
+            continue
+        try:
+            device_ids.add(int(identifier))
+        except (TypeError, ValueError):
+            continue
+
+    # entities that are not linked to the device (the pet device tracker)
+    entity_registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if entity.unique_id in {f"{_id}_pet_tracker" for _id in device_ids}:
+            entity_registry.async_remove(entity.entity_id)
+
+    spc: SurePetcareAPI | None = hass.data.get(DOMAIN, {}).get(SPC)
+    known_ids = set(spc.coordinator.data) if spc and spc.coordinator.data else set()
+
+    ignored = get_ignored_ids(entry)
+    if new_ignored := (device_ids & known_ids) - ignored:
+        _LOGGER.info("🐾 ignoring Sure Petcare IDs: %s", sorted(new_ignored))
+        # updating the options reloads the entry (see async_reload_entry)
+        hass.config_entries.async_update_entry(
+            entry,
+            options={
+                **entry.options,
+                CONF_IGNORED_IDS: sorted(ignored | new_ignored),
+            },
+        )
+
+    return True
+
+
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
 
@@ -155,6 +211,21 @@ class SurePetcareAPI:
         self.surepy = surepy
 
         self.states: dict[int, Any] = {}
+
+    @property
+    def ignored_ids(self) -> set[int]:
+        """IDs of pets/devices that must not be created in Home Assistant."""
+        return get_ignored_ids(self.config_entry)
+
+    @property
+    def entities(self) -> list[SurepyEntity]:
+        """Sure Petcare entities to create in Home Assistant."""
+        ignored = self.ignored_ids
+        return [
+            entity
+            for entity in (self.coordinator.data or {}).values()
+            if entity.id not in ignored
+        ]
 
     async def set_pet_location(self, pet_id: int, location: Location) -> None:
         """Update the location of a pet."""
