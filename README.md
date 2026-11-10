@@ -45,12 +45,12 @@ There will be 1 entity per cat flap with the following attributes:
 <details>
   <summary>Click to expand!</summary>
   
+The state is the battery level in % (calculated with the voltages set in the integration options).
+
 | Attribute | Example |
 |---------------------|-------------------|
-| Battery Level       | 85                |
 | Voltage             | 5.09              |
 | Voltage per battery | 1.27              |
-| For                 | 5d 04:12          |
 </details>
 
 ### `binary_sensor.flap_connectivity` / `binary_sensor.hub`
@@ -72,7 +72,7 @@ There will be 1 entity per cat flap with the following attributes:
 
 | Attribute                  | Example                                                                |
 |----------------------------|------------------------------------------------------------------------|
-| **For (Duration)** | **04:25** (Hours:Minutes since last move)                              |
+| **For (Duration)**         | **04:25** or **1d 04:25** (time since last move; omitted if unknown)   |
 | Since                      | September 18, 2024, 4:09:42 PM                                         |
 | Where                      | 1 (Inside) / 2 (Outside)                                               |
 | ID                         | 123456                                                                 |
@@ -89,6 +89,18 @@ There will be 1 entity per cat flap with the following attributes:
 
 </details>
 
+
+## Removing a pet or device
+
+Pets and devices that are removed from your Sure Petcare account are removed from Home Assistant automatically (within a few minutes, or at the next restart). No new login is needed.
+
+If a pet or device is still listed in your Sure Petcare account but you no longer want it in Home Assistant:
+
+1. Go to **Settings → Devices & services → SureHA** and open the pet/device.
+2. Use the **⋮ menu → Delete**.
+
+Its entities are removed and it is added to the *ignored* list, so it is not created again.
+To bring it back, open the integration's **Configure** dialog and untick it under *Ignored pets/devices*.
 
 ## Services
 
@@ -115,14 +127,18 @@ data:
   
  Data needed:<br>
    - `flap_id` = this is the surepetcare id for the flap you want to change.<br>
-   - `lock_state` = locked, unlocked, in_only, out_only
-  
+   - `lock_state` = one of:
+     - `unlocked` – pets can go in and out
+     - `locked_in` – pets can come in but not go out
+     - `locked_out` – pets can go out but not come in
+     - `locked_all` – flap locked in both directions
+
  Example:
- ```yaml
+```yaml
 service: sureha.set_lock_state
 data:
   flap_id: 123456
-  lock_state: locked
+  lock_state: locked_all
 ```
 
 

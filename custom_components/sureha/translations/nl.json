@@ -2,7 +2,8 @@
     "config": {
         "error": {
             "invalid_auth": "Ongeldige authenticatie",
-            "unknown": "Onverwachte fout"
+            "unknown": "Onverwachte fout",
+            "cannot_connect": "Kan geen verbinding maken"
         },
         "step": {
             "user": {
@@ -13,6 +14,9 @@
                 "description": "Log in met je Sure Petcare account.",
                 "title": "Sure Petcare"
             }
+        },
+        "abort": {
+            "already_configured": "Account is al geconfigureerd"
         }
     },
     "options": {
@@ -20,11 +24,18 @@
             "init": {
                 "data": {
                     "voltage_full": "Voltage (batterijen vol)",
-                    "voltage_low": "Voltage (batteries leeg)"
+                    "voltage_low": "Voltage (batterijen leeg)",
+                    "ignored_ids": "Genegeerde huisdieren/apparaten"
                 },
                 "description": "Batterij opties",
-                "title": "SureHA opties"
+                "title": "SureHA opties",
+                "data_description": {
+                    "ignored_ids": "Geselecteerde huisdieren en apparaten worden niet aangemaakt in Home Assistant."
+                }
             }
+        },
+        "error": {
+            "invalid_voltage": "Voltage (batterijen leeg) moet lager zijn dan voltage (batterijen vol)"
         }
     }
 }
