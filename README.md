@@ -53,6 +53,20 @@ The state is the battery level in % (calculated with the voltages set in the int
 | Voltage per battery | 1.27              |
 </details>
 
+### `lock.<flap>_locked_in` / `lock.<flap>_locked_out` / `lock.<flap>_locked_all`
+
+Every cat/pet flap gets three lock entities, like the official Sure Petcare integration:
+
+| Entity | Locked means |
+|---|---|
+| `lock.<flap>_locked_in` | pets can come in but not go out |
+| `lock.<flap>_locked_out` | pets can go out but not come in |
+| `lock.<flap>_locked_all` | the flap is locked in both directions |
+
+Locking one of them switches the flap to that mode (the other two become unlocked).
+Unlocking the active one unlocks the flap; unlocking a mode that is not active does nothing.
+During a curfew all three are shown as unlocked.
+
 ### `binary_sensor.flap_connectivity` / `binary_sensor.hub`
 
 <details>

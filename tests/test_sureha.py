@@ -238,3 +238,73 @@ async def test_pet_removed_from_account(hass):
     assert not [e for e in er.async_entries_for_config_entry(ent_reg, entry.entry_id) if "thorin" in e.entity_id]
     assert hass.states.get("binary_sensor.pet_nopos") is not None
     assert hass.states.get("sensor.cat_flap_flap") is not None
+
+
+async def test_flap_locks(hass):
+    """Lock entities behave like the official integration."""
+    from homeassistant.components.lock import DOMAIN as LOCK_DOMAIN
+    from homeassistant.const import ATTR_ENTITY_ID
+
+    flap_mode = {"mode": 1}  # locked_in
+    surepy = make_surepy()
+
+    def current_entities(refresh=False):
+        data = entities()
+        data[2].raw_data()["status"]["locking"]["mode"] = flap_mode["mode"]
+        return data
+
+    surepy.get_entities = AsyncMock(side_effect=current_entities)
+
+    def api(mode):
+        async def call(flap_id):
+            assert flap_id == 2
+            flap_mode["mode"] = mode
+        return call
+
+    surepy.sac.unlock = AsyncMock(side_effect=api(0))
+    surepy.sac.lock_in = AsyncMock(side_effect=api(1))
+    surepy.sac.lock_out = AsyncMock(side_effect=api(2))
+    surepy.sac.lock = AsyncMock(side_effect=api(3))
+
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="u",
+                            data={CONF_USERNAME: "u", CONF_PASSWORD: "p", CONF_TOKEN: "t"})
+    entry.add_to_hass(hass)
+    with patch("custom_components.sureha.Surepy", return_value=surepy):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    ids = {m: f"lock.flap_{m}" for m in ("locked_in", "locked_out", "locked_all")}
+
+    def states():
+        return {m: hass.states.get(e).state for m, e in ids.items()}
+
+    assert states() == {"locked_in": "locked", "locked_out": "unlocked", "locked_all": "unlocked"}
+    # the locks belong to the flap device
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, 2)})
+    assert er.async_get(hass).async_get(ids["locked_all"]).device_id == device.id
+
+    async def call(service, mode):
+        await hass.services.async_call(LOCK_DOMAIN, service, {ATTR_ENTITY_ID: ids[mode]}, blocking=True)
+        await hass.async_block_till_done()
+
+    # locking another mode switches the flap; all three entities follow at once
+    await call("lock", "locked_all")
+    surepy.sac.lock.assert_awaited_once_with(2)
+    assert states() == {"locked_in": "unlocked", "locked_out": "unlocked", "locked_all": "locked"}
+
+    # unlocking a mode that is not active does nothing
+    await call("unlock", "locked_out")
+    surepy.sac.unlock.assert_not_awaited()
+
+    # unlocking the active mode unlocks the flap
+    await call("unlock", "locked_all")
+    surepy.sac.unlock.assert_awaited_once_with(2)
+    assert set(states().values()) == {"unlocked"}
+    assert hass.states.get("sensor.cat_flap_flap").state == "unlocked"
+
+    # API errors are reported and the state is unchanged
+    surepy.sac.lock_out.side_effect = SurePetcareError("boom")
+    with pytest.raises(HomeAssistantError):
+        await call("lock", "locked_out")
+    assert set(states().values()) == {"unlocked"}
