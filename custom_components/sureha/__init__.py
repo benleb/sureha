@@ -1,16 +1,16 @@
 """The surepetcare integration."""
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from random import choice
 from typing import Any
 
-import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -42,19 +42,7 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.DEVICE_TRACKER, Platform.SENSOR]
 SCAN_INTERVAL = timedelta(minutes=3)
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            vol.All(
-                {
-                    vol.Required(CONF_USERNAME): cv.string,
-                    vol.Required(CONF_PASSWORD): cv.string,
-                }
-            )
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 CATS = [
     "/ᐠ｡▿｡ᐟ\\*ᵖᵘʳʳ",
@@ -106,7 +94,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_update_data():
 
         try:
-            async with async_timeout.timeout(20):
+            async with asyncio.timeout(20):
                 return await spc.surepy.get_entities(refresh=True)
 
         except SurePetcareAuthenticationError as err:
@@ -126,7 +114,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][SPC] = spc
 
+    # reload the entry when the options (battery voltages) change
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     return await spc.async_setup()
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry (e.g. after the options changed)."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(SPC, None)
+
+        for service in (SERVICE_PET_LOCATION, SERVICE_SET_LOCK_STATE):
+            if hass.services.has_service(DOMAIN, service):
+                hass.services.async_remove(DOMAIN, service)
+
+    return unload_ok
 
 
 class SurePetcareAPI:
@@ -146,7 +157,7 @@ class SurePetcareAPI:
         self.states: dict[int, Any] = {}
 
     async def set_pet_location(self, pet_id: int, location: Location) -> None:
-        """Update the lock state of a flap."""
+        """Update the location of a pet."""
 
         await self.surepy.sac.set_pet_location(pet_id, location)
 
@@ -170,7 +181,6 @@ class SurePetcareAPI:
             "%s %s", " \x1b[38;2;255;26;102m·\x1b[0m" * 24, choice(CATS)  # nosec
         )
         _LOGGER.info("  🐾   meeowww..! to the SureHA integration!")
-        # Riferimento aggiornato al tuo repository GitHub
         _LOGGER.info("  🐾     code & issues: https://github.com/scoprire87/sureha")
         _LOGGER.info(" \x1b[38;2;255;26;102m·\x1b[0m" * 30)
         _LOGGER.info("")
@@ -185,9 +195,11 @@ class SurePetcareAPI:
 
         pet_location_service_schema = vol.Schema(
             {
-                vol.Required(ATTR_PET_ID): vol.Any(cv.positive_int, vol.In(pet_ids)),
-                vol.Required(ATTR_WHERE): vol.Any(
+                vol.Required(ATTR_PET_ID): vol.All(cv.positive_int, vol.In(pet_ids)),
+                vol.Required(ATTR_WHERE): vol.All(
                     cv.string,
+                    vol.Strip,
+                    vol.Title,
                     vol.In(
                         [
                             Location.INSIDE.name.title(),
@@ -198,20 +210,20 @@ class SurePetcareAPI:
             }
         )
 
-        async def handle_set_pet_location(call: Any) -> None:
-            """Call when setting the lock state."""
+        async def handle_set_pet_location(call: ServiceCall) -> None:
+            """Call when setting the location of a pet."""
+
+            pet_id: int = call.data[ATTR_PET_ID]
+            location = Location[call.data[ATTR_WHERE].upper()]
 
             try:
-                if (pet_id := int(call.data.get(ATTR_PET_ID))) and (
-                    where := str(call.data.get(ATTR_WHERE))
-                ):
-                    await self.set_pet_location(pet_id, Location[where.upper()])
-                    await self.coordinator.async_request_refresh()
+                await self.set_pet_location(pet_id, location)
+            except SurePetcareError as error:
+                raise HomeAssistantError(
+                    f"Unable to set the location of pet {pet_id}: {error}"
+                ) from error
 
-            except ValueError as error:
-                _LOGGER.error(
-                    "🐾 \x1b[38;2;255;26;102m·\x1b[0m arguments of wrong type: %s", error
-                )
+            await self.coordinator.async_request_refresh()
 
         self.hass.services.async_register(
             DOMAIN,
@@ -220,13 +232,19 @@ class SurePetcareAPI:
             schema=pet_location_service_schema,
         )
 
-        async def handle_set_lock_state(call: Any) -> None:
+        async def handle_set_lock_state(call: ServiceCall) -> None:
             """Call when setting the lock state."""
 
-            flap_id = call.data.get(ATTR_FLAP_ID)
-            lock_state = call.data.get(ATTR_LOCK_STATE)
+            flap_id: int = call.data[ATTR_FLAP_ID]
+            lock_state: str = call.data[ATTR_LOCK_STATE]
 
-            await self.set_lock_state(flap_id, lock_state)
+            try:
+                await self.set_lock_state(flap_id, lock_state)
+            except SurePetcareError as error:
+                raise HomeAssistantError(
+                    f"Unable to set the lock state of flap {flap_id}: {error}"
+                ) from error
+
             await self.coordinator.async_request_refresh()
 
         flap_ids = [
@@ -240,6 +258,7 @@ class SurePetcareAPI:
                 vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(flap_ids)),
                 vol.Required(ATTR_LOCK_STATE): vol.All(
                     cv.string,
+                    vol.Strip,
                     vol.Lower,
                     vol.In(
                         [

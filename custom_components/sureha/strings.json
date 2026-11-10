@@ -12,7 +12,11 @@
         },
         "error": {
             "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-            "unknown": "[%key:common::config_flow::error::unknown%]"
+            "unknown": "[%key:common::config_flow::error::unknown%]",
+            "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
+        },
+        "abort": {
+            "already_configured": "[%key:common::config_flow::abort::already_configured_account%]"
         }
     },
     "options": {
@@ -25,6 +29,9 @@
                     "voltage_low": "Voltage (batteries low)"
                 }
             }
+        },
+        "error": {
+            "invalid_voltage": "Voltage (batteries low) must be lower than voltage (batteries full)"
         }
     }
 }

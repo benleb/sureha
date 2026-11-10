@@ -1,0 +1,141 @@
+"""Smoke tests for the SureHA custom integration."""
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME
+from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.exceptions import HomeAssistantError
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+from surepy.entities.devices import Feeder, Felaqua, Flap, Hub
+from surepy.entities.pet import Pet
+from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
+
+from custom_components.sureha.const import DOMAIN
+
+HH = 999
+SINCE = (datetime.now(timezone.utc) - timedelta(days=1, hours=2, minutes=5)).strftime(
+    "%Y-%m-%dT%H:%M:%S+00:00"
+)
+
+
+def entities():
+    return {
+        1: Hub({"id": 1, "product_id": 1, "household_id": HH, "name": "hub",
+                "status": {"led_mode": 4, "pairing_mode": 0, "online": True}}),
+        2: Flap({"id": 2, "product_id": 6, "household_id": HH, "name": "flap",
+                 "status": {"locking": {"mode": 1}, "battery": 5.6, "learn_mode": False,
+                            "online": True, "signal": {"device_rssi": -50, "hub_rssi": -60}}}),
+        3: Feeder({"id": 3, "product_id": 4, "household_id": HH, "name": "feeder",
+                   "control": {"bowls": {"settings": [{"food_type": 1}, {"food_type": 1}]}},
+                   "lunch": {"weights": [{"index": 0, "weight": 20.5, "change": -3},
+                                         {"index": 1, "weight": 0, "change": 0}]},
+                   "status": {"battery": 5.2, "online": True}}),
+        4: Felaqua({"id": 4, "product_id": 8, "household_id": HH, "name": "water",
+                    "latest_drink": {"remaining": 0},
+                    "status": {"battery": 5.0, "online": True}}),
+        10: Pet({"id": 10, "household_id": HH, "name": "Thorin",
+                 "position": {"where": 1, "since": SINCE}}),
+        11: Pet({"id": 11, "household_id": HH, "name": "Nopos"}),  # no position
+    }
+
+
+def make_surepy():
+    surepy = MagicMock()
+    surepy.get_entities = AsyncMock(side_effect=lambda refresh=False: entities())
+    surepy.sac = MagicMock()
+    for m in ("lock", "lock_in", "lock_out", "unlock", "set_pet_location"):
+        setattr(surepy.sac, m, AsyncMock(return_value={}))
+    return surepy
+
+
+async def test_config_flow(hass):
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    assert result["type"] == FlowResultType.FORM
+
+    data = {CONF_USERNAME: "User@x.it", CONF_PASSWORD: "pw"}
+
+    with patch("custom_components.sureha.config_flow.Surepy") as sp:
+        sp.return_value.sac.get_token = AsyncMock(side_effect=SurePetcareAuthenticationError("x"))
+        r = await hass.config_entries.flow.async_configure(result["flow_id"], data)
+        assert r["type"] == FlowResultType.FORM and r["errors"] == {"base": "invalid_auth"}
+
+        sp.return_value.sac.get_token = AsyncMock(side_effect=SurePetcareError("x"))
+        r = await hass.config_entries.flow.async_configure(result["flow_id"], data)
+        assert r["errors"] == {"base": "cannot_connect"}
+
+        sp.return_value.sac.get_token = AsyncMock(return_value="tok")
+        with patch("custom_components.sureha.async_setup_entry", return_value=True):
+            r = await hass.config_entries.flow.async_configure(result["flow_id"], data)
+        assert r["type"] == FlowResultType.CREATE_ENTRY
+        assert r["data"][CONF_TOKEN] == "tok"
+
+    # duplicate
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": config_entries.SOURCE_USER})
+    r = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_USERNAME: "user@X.it", CONF_PASSWORD: "pw"})
+    assert r["type"] == FlowResultType.ABORT and r["reason"] == "already_configured"
+
+
+async def setup(hass):
+    entry = MockConfigEntry(domain=DOMAIN, unique_id="u",
+                            data={CONF_USERNAME: "u", CONF_PASSWORD: "p", CONF_TOKEN: "t"})
+    entry.add_to_hass(hass)
+    surepy = make_surepy()
+    with patch("custom_components.sureha.Surepy", return_value=surepy):
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    return entry, surepy
+
+
+async def test_setup_services_unload(hass):
+    entry, surepy = await setup(hass)
+    assert entry.state is ConfigEntryState.LOADED
+
+    states = {s.entity_id: s for s in hass.states.async_all()}
+    for eid, s in sorted(states.items()):
+        print(eid, s.state, {k: v for k, v in s.attributes.items() if k in ("for", "unit_of_measurement", "voltage")})
+
+    flap = [s for e, s in states.items() if e.startswith("sensor.") and "flap" in e and "battery" not in e][0]
+    assert flap.state == "locked_in"
+    bowls = sorted(s.state for e, s in states.items() if "bowl" in e)
+    assert bowls == ["0", "20"], bowls
+    water = [s for e, s in states.items() if e.startswith("sensor.felaqua")][0]
+    assert water.state == "0"
+    batt = [s for e, s in states.items() if "flap" in e and "battery" in e][0]
+    assert batt.state == "42" and batt.attributes["voltage"] == "5.60"
+    pet = [s for e, s in states.items() if e.startswith("binary_sensor.") and "thorin" in e][0]
+    assert pet.state == "on" and pet.attributes["for"].startswith("1d 02:0")
+    nopos = [s for e, s in states.items() if e.startswith("binary_sensor.") and "nopos" in e][0]
+    assert "for" not in nopos.attributes and nopos.state == "off"
+    tracker = [s for e, s in states.items() if e.startswith("device_tracker.") and "nopos" in e][0]
+    assert tracker.state == "not_home"
+
+    await hass.services.async_call(DOMAIN, "set_lock_state", {"flap_id": "2", "lock_state": " Locked_All "}, blocking=True)
+    surepy.sac.lock.assert_awaited_once_with(2)
+    await hass.services.async_call(DOMAIN, "set_pet_location", {"pet_id": "10", "where": "outside"}, blocking=True)
+    assert surepy.sac.set_pet_location.await_args.args[0] == 10
+    with pytest.raises(Exception):
+        await hass.services.async_call(DOMAIN, "set_pet_location", {"pet_id": 10, "where": "garden"}, blocking=True)
+    with pytest.raises(Exception):
+        await hass.services.async_call(DOMAIN, "set_lock_state", {"flap_id": 2, "lock_state": "locked"}, blocking=True)
+    surepy.sac.unlock.side_effect = SurePetcareError("boom")
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(DOMAIN, "set_lock_state", {"flap_id": 2, "lock_state": "unlocked"}, blocking=True)
+
+    # options flow + reload
+    r = await hass.config_entries.options.async_init(entry.entry_id)
+    assert r["type"] == FlowResultType.FORM
+    r2 = await hass.config_entries.options.async_configure(r["flow_id"], {"voltage_low": 1.6, "voltage_full": 1.2})
+    assert r2["errors"] == {"base": "invalid_voltage"}
+    with patch("custom_components.sureha.Surepy", return_value=surepy):
+        r2 = await hass.config_entries.options.async_configure(r["flow_id"], {"voltage_low": 1.2, "voltage_full": 1.5})
+        assert r2["type"] == FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.LOADED
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    assert not hass.services.has_service(DOMAIN, "set_lock_state")
