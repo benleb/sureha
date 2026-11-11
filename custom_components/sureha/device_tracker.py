@@ -12,6 +12,7 @@ from surepy.enums import Location
 # pylint: disable=relative-beyond-top-level
 from . import DOMAIN, SurePetcareAPI
 from .const import SPC
+from .util import format_duration
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,10 +27,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     async_add_entities(
         [
             SureDeviceTracker(spc.coordinator, pet.id, spc)
-            for pet in spc.coordinator.data.values()
+            for pet in spc.entities
             if pet.type == EntityType.PET
-        ],
-        True,
+        ]
     )
 
 
@@ -50,7 +50,6 @@ class SureDeviceTracker(CoordinatorEntity, ScannerEntity):
             raise ValueError("Pet ID is required")
 
         self._id = _id
-        self._attr_unique_id = f"{self._id}_pet_tracker"
 
         self._surepy_entity: SurePet = self._coordinator.data[self._id]
         type_name = self._surepy_entity.type.name.replace("_", " ").title()
@@ -68,6 +67,11 @@ class SureDeviceTracker(CoordinatorEntity, ScannerEntity):
         self._attr_entity_picture = self._surepy_entity.photo_url
 
     @property
+    def unique_id(self) -> str:
+        """Return a unique ID (ScannerEntity only provides one for MAC addresses)."""
+        return f"{self._id}_pet_tracker"
+
+    @property
     def is_connected(self) -> bool:
         """Return true if the device is connected to the network."""
         return bool(self.location_name == "home")
@@ -79,13 +83,15 @@ class SureDeviceTracker(CoordinatorEntity, ScannerEntity):
         pet: SurePet
         attrs: dict[str, Any] = {}
 
-        if pet := self._coordinator.data[self._id]:
-
+        if pet := self._coordinator.data.get(self._id):
             attrs = {
                 "since": pet.location.since,
                 "where": pet.location.where,
                 **pet.raw_data(),
             }
+
+            if (duration := format_duration(pet.location.since)) is not None:
+                attrs["for"] = duration
 
         return attrs
 
@@ -96,7 +102,7 @@ class SureDeviceTracker(CoordinatorEntity, ScannerEntity):
         pet: SurePet
         inside: bool = False
 
-        if pet := self._coordinator.data[self._id]:
+        if pet := self._coordinator.data.get(self._id):
             inside = bool(pet.location.where == Location.INSIDE)
 
         return "home" if inside else "not_home"

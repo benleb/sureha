@@ -12,7 +12,11 @@
         },
         "error": {
             "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
-            "unknown": "[%key:common::config_flow::error::unknown%]"
+            "unknown": "[%key:common::config_flow::error::unknown%]",
+            "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]"
+        },
+        "abort": {
+            "already_configured": "[%key:common::config_flow::abort::already_configured_account%]"
         }
     },
     "options": {
@@ -22,9 +26,16 @@
                 "description": "Battery options",
                 "data": {
                     "voltage_full": "Voltage (batteries full)",
-                    "voltage_low": "Voltage (batteries low)"
+                    "voltage_low": "Voltage (batteries low)",
+                    "ignored_ids": "Ignored pets/devices"
+                },
+                "data_description": {
+                    "ignored_ids": "Selected pets and devices are not created in Home Assistant."
                 }
             }
+        },
+        "error": {
+            "invalid_voltage": "Voltage (batteries low) must be lower than voltage (batteries full)"
         }
     }
 }

@@ -1,2 +1,4 @@
 mypy.ini
 pyproject.toml
+__pycache__/
+*.pyc

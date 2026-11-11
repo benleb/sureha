@@ -1,0 +1,3 @@
+pytest-homeassistant-custom-component
+# surepy 0.9.0 pins old versions of some deps; install it without them:
+#   pip install --no-deps surepy==0.9.0 && pip install "rich<11" click requests

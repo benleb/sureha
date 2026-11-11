@@ -27,3 +27,6 @@ ATTR_LOCK_STATE = "lock_state"
 SERVICE_PET_LOCATION = "set_pet_location"
 ATTR_PET_ID = "pet_id"
 ATTR_WHERE = "where"
+
+# options
+CONF_IGNORED_IDS = "ignored_ids"
