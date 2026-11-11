@@ -35,7 +35,8 @@ def entities():
                    "status": {"battery": 5.2, "online": True}}),
         4: Felaqua({"id": 4, "product_id": 8, "household_id": HH, "name": "water",
                     "latest_drink": {"remaining": 0},
-                    "status": {"battery": 5.0, "online": True}}),
+                    "status": {"battery": 5.0, "online": False,
+                               "signal": {"device_rssi": -80, "hub_rssi": -70}}}),
         10: Pet({"id": 10, "household_id": HH, "name": "Thorin",
                  "position": {"where": 1, "since": SINCE}}),
         11: Pet({"id": 11, "household_id": HH, "name": "Nopos"}),  # no position
@@ -111,6 +112,10 @@ async def test_setup_services_unload(hass):
     assert "for" not in nopos.attributes and nopos.state == "off"
     tracker = [s for e, s in states.items() if e.startswith("device_tracker.") and "nopos" in e][0]
     assert tracker.state == "not_home"
+    # connectivity follows the "online" flag, even when signal data is present
+    assert states["binary_sensor.flap_connectivity"].state == "on"
+    assert states["binary_sensor.water_connectivity"].state == "off"
+    assert states["binary_sensor.water_connectivity"].attributes["device_rssi"] == "-80.00"
 
     await hass.services.async_call(DOMAIN, "set_lock_state", {"flap_id": "2", "lock_state": " Locked_All "}, blocking=True)
     surepy.sac.lock.assert_awaited_once_with(2)

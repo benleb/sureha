@@ -340,7 +340,7 @@ class SurePetcareAPI:
             "%s %s", " \x1b[38;2;255;26;102m·\x1b[0m" * 24, choice(CATS)  # nosec
         )
         _LOGGER.info("  🐾   meeowww..! to the SureHA integration!")
-        _LOGGER.info("  🐾     code & issues: https://github.com/scoprire87/sureha")
+        _LOGGER.info("  🐾     code & issues: https://github.com/benleb/sureha")
         _LOGGER.info(" \x1b[38;2;255;26;102m·\x1b[0m" * 30)
         _LOGGER.info("")
 
