@@ -2,7 +2,8 @@
     "config": {
         "error": {
             "invalid_auth": "Ungültige Authentifizierung",
-            "unknown": "Unerwarteter Fehler"
+            "unknown": "Unerwarteter Fehler",
+            "cannot_connect": "Verbindung fehlgeschlagen"
         },
         "step": {
             "user": {
@@ -13,6 +14,9 @@
                 "description": "Mit dem Sure Petcare Konto anmelden.",
                 "title": "Sure Petcare"
             }
+        },
+        "abort": {
+            "already_configured": "Konto ist bereits konfiguriert"
         }
     },
     "options": {
@@ -20,11 +24,18 @@
             "init": {
                 "data": {
                     "voltage_full": "Volt (Batterien voll)",
-                    "voltage_low": "Volt (Batterien leer)"
+                    "voltage_low": "Volt (Batterien leer)",
+                    "ignored_ids": "Ignorierte Haustiere/Geräte"
                 },
                 "description": "Batterie Optionen",
-                "title": "SureHA Opptionen"
+                "title": "SureHA Optionen",
+                "data_description": {
+                    "ignored_ids": "Ausgewählte Haustiere und Geräte werden in Home Assistant nicht angelegt."
+                }
             }
+        },
+        "error": {
+            "invalid_voltage": "Die Spannung (Batterien leer) muss niedriger sein als die Spannung (Batterien voll)"
         }
     }
 }

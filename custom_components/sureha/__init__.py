@@ -1,20 +1,22 @@
 """The surepetcare integration."""
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 import logging
 from random import choice
 from typing import Any
 
-import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_TOKEN, CONF_USERNAME, Platform
-from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.core import HomeAssistant, ServiceCall, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from surepy import Surepy
+from surepy.const import MESTART_RESOURCE
 from surepy.entities import SurepyEntity
 from surepy.enums import EntityType, Location, LockState
 from surepy.exceptions import SurePetcareAuthenticationError, SurePetcareError
@@ -28,6 +30,7 @@ from .const import (
     ATTR_VOLTAGE_FULL,
     ATTR_VOLTAGE_LOW,
     ATTR_WHERE,
+    CONF_IGNORED_IDS,
     DOMAIN,
     SERVICE_PET_LOCATION,
     SERVICE_SET_LOCK_STATE,
@@ -39,22 +42,15 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.DEVICE_TRACKER, Platform.SENSOR]
+PLATFORMS = [
+    Platform.BINARY_SENSOR,
+    Platform.DEVICE_TRACKER,
+    Platform.LOCK,
+    Platform.SENSOR,
+]
 SCAN_INTERVAL = timedelta(minutes=3)
 
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema(
-            vol.All(
-                {
-                    vol.Required(CONF_USERNAME): cv.string,
-                    vol.Required(CONF_PASSWORD): cv.string,
-                }
-            )
-        )
-    },
-    extra=vol.ALLOW_EXTRA,
-)
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 CATS = [
     "/ᐠ｡▿｡ᐟ\\*ᵖᵘʳʳ",
@@ -106,15 +102,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_update_data():
 
         try:
-            # asyncio.TimeoutError and aiohttp.ClientError already handled
+            async with asyncio.timeout(20):
+                entities = await spc.surepy.get_entities(refresh=True)
 
-            async with async_timeout.timeout(20):
-                return await spc.surepy.get_entities(refresh=True)
+                if not entities:
+                    # nothing new from the API (e.g. "not modified"): surepy
+                    # returns an empty result, so rebuild from its cached data
+                    entities = await spc.surepy.get_entities(refresh=False)
 
         except SurePetcareAuthenticationError as err:
             raise ConfigEntryAuthFailed from err
         except SurePetcareError as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
+
+        if not entities:
+            raise UpdateFailed("No data received from the Sure Petcare API")
+
+        # surepy never forgets an entity once seen: drop pets/devices that are
+        # no longer in the account according to the latest API response
+        if account_ids := _account_entity_ids(spc.surepy):
+            if stale_ids := set(entities) - account_ids:
+                _LOGGER.info(
+                    "🐾 no longer in the Sure Petcare account: %s", sorted(stale_ids)
+                )
+                for stale_id in stale_ids:
+                    spc.surepy.entities.pop(stale_id, None)
+                entities = {
+                    _id: entity
+                    for _id, entity in entities.items()
+                    if _id in account_ids
+                }
+                if spc.setup_done:
+                    # reload so their entities are removed from Home Assistant
+                    hass.config_entries.async_schedule_reload(entry.entry_id)
+
+        return entities
 
     spc.coordinator = DataUpdateCoordinator(
         hass,
@@ -126,9 +148,139 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await spc.coordinator.async_config_entry_first_refresh()
 
+    _async_remove_stale_registry_entries(hass, entry, set(spc.coordinator.data))
+
     hass.data[DOMAIN][SPC] = spc
 
+    # reload the entry when the options (battery voltages) change
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
     return await spc.async_setup()
+
+
+def _account_entity_ids(surepy: Surepy) -> set[int]:
+    """IDs of the pets/devices in the latest response of the Sure Petcare API."""
+
+    resources = getattr(surepy.sac, "resources", None)
+    if not isinstance(resources, dict):
+        return set()
+
+    data = (resources.get(MESTART_RESOURCE) or {}).get("data") or {}
+
+    return {
+        int(item["id"])
+        for item in [*data.get("devices", []), *data.get("pets", [])]
+        if "id" in item
+    }
+
+
+@callback
+def _async_remove_stale_registry_entries(
+    hass: HomeAssistant, entry: ConfigEntry, current_ids: set[int]
+) -> None:
+    """Remove devices/entities of pets and devices that left the account."""
+
+    if not current_ids:
+        return
+
+    device_registry = dr.async_get(hass)
+    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        device_ids: set[int] = set()
+        for domain, identifier in device.identifiers:
+            if domain == DOMAIN and str(identifier).isdigit():
+                device_ids.add(int(identifier))
+
+        if device_ids and not device_ids & current_ids:
+            _LOGGER.info("🐾 removing stale device: %s", device.name)
+            device_registry.async_update_device(
+                device.id, remove_config_entry_id=entry.entry_id
+            )
+
+    # entities without a device: the pet device trackers
+    entity_registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if (
+            entity.device_id is None
+            and entity.unique_id.endswith("_pet_tracker")
+            and (pet_id := entity.unique_id.removesuffix("_pet_tracker")).isdigit()
+            and int(pet_id) not in current_ids
+        ):
+            _LOGGER.info("🐾 removing stale entity: %s", entity.entity_id)
+            entity_registry.async_remove(entity.entity_id)
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the config entry (e.g. after the options changed)."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+def get_ignored_ids(entry: ConfigEntry) -> set[int]:
+    """Return the IDs of the pets/devices the user removed from Home Assistant."""
+
+    ignored: set[int] = set()
+    for value in entry.options.get(CONF_IGNORED_IDS, []):
+        try:
+            ignored.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return ignored
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: ConfigEntry, device_entry: dr.DeviceEntry
+) -> bool:
+    """Allow deleting a pet/device from the UI.
+
+    If Sure Petcare still reports it (e.g. a pet that is still in the account),
+    its ID is added to the ignored list so it is not created again.
+    """
+
+    device_ids: set[int] = set()
+    for domain, identifier in device_entry.identifiers:
+        if domain != DOMAIN:
+            continue
+        try:
+            device_ids.add(int(identifier))
+        except (TypeError, ValueError):
+            continue
+
+    # entities that are not linked to the device (the pet device tracker)
+    entity_registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if entity.unique_id in {f"{_id}_pet_tracker" for _id in device_ids}:
+            entity_registry.async_remove(entity.entity_id)
+
+    spc: SurePetcareAPI | None = hass.data.get(DOMAIN, {}).get(SPC)
+    known_ids = set(spc.coordinator.data) if spc and spc.coordinator.data else set()
+
+    ignored = get_ignored_ids(entry)
+    if new_ignored := (device_ids & known_ids) - ignored:
+        _LOGGER.info("🐾 ignoring Sure Petcare IDs: %s", sorted(new_ignored))
+        # updating the options reloads the entry (see async_reload_entry)
+        hass.config_entries.async_update_entry(
+            entry,
+            options={
+                **entry.options,
+                CONF_IGNORED_IDS: sorted(ignored | new_ignored),
+            },
+        )
+
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+    if unload_ok:
+        hass.data.get(DOMAIN, {}).pop(SPC, None)
+
+        for service in (SERVICE_PET_LOCATION, SERVICE_SET_LOCK_STATE):
+            if hass.services.has_service(DOMAIN, service):
+                hass.services.async_remove(DOMAIN, service)
+
+    return unload_ok
 
 
 class SurePetcareAPI:
@@ -146,17 +298,31 @@ class SurePetcareAPI:
         self.surepy = surepy
 
         self.states: dict[int, Any] = {}
+        self.setup_done = False
+
+    @property
+    def ignored_ids(self) -> set[int]:
+        """IDs of pets/devices that must not be created in Home Assistant."""
+        return get_ignored_ids(self.config_entry)
+
+    @property
+    def entities(self) -> list[SurepyEntity]:
+        """Sure Petcare entities to create in Home Assistant."""
+        ignored = self.ignored_ids
+        return [
+            entity
+            for entity in (self.coordinator.data or {}).values()
+            if entity.id not in ignored
+        ]
 
     async def set_pet_location(self, pet_id: int, location: Location) -> None:
-        """Update the lock state of a flap."""
+        """Update the location of a pet."""
 
         await self.surepy.sac.set_pet_location(pet_id, location)
 
     async def set_lock_state(self, flap_id: int, state: str) -> None:
         """Update the lock state of a flap."""
 
-        # https://github.com/PyCQA/pylint/issues/2062
-        # pylint: disable=no-member
         lock_states = {
             LockState.UNLOCKED.name.lower(): self.surepy.sac.unlock,
             LockState.LOCKED_IN.name.lower(): self.surepy.sac.lock_in,
@@ -164,7 +330,6 @@ class SurePetcareAPI:
             LockState.LOCKED_ALL.name.lower(): self.surepy.sac.lock,
         }
 
-        # elegant functions dict to choose the right function | idea by @janiversen
         await lock_states[state.lower()](flap_id)
 
     async def async_setup(self) -> bool:
@@ -189,13 +354,13 @@ class SurePetcareAPI:
 
         pet_location_service_schema = vol.Schema(
             {
-                vol.Required(ATTR_PET_ID): vol.Any(cv.positive_int, vol.In(pet_ids)),
-                vol.Required(ATTR_WHERE): vol.Any(
+                vol.Required(ATTR_PET_ID): vol.All(cv.positive_int, vol.In(pet_ids)),
+                vol.Required(ATTR_WHERE): vol.All(
                     cv.string,
+                    vol.Strip,
+                    vol.Title,
                     vol.In(
                         [
-                            # https://github.com/PyCQA/pylint/issues/2062
-                            # pylint: disable=no-member
                             Location.INSIDE.name.title(),
                             Location.OUTSIDE.name.title(),
                         ]
@@ -204,22 +369,20 @@ class SurePetcareAPI:
             }
         )
 
-        async def handle_set_pet_location(call: Any) -> None:
-            """Call when setting the lock state."""
+        async def handle_set_pet_location(call: ServiceCall) -> None:
+            """Call when setting the location of a pet."""
+
+            pet_id: int = call.data[ATTR_PET_ID]
+            location = Location[call.data[ATTR_WHERE].upper()]
 
             try:
+                await self.set_pet_location(pet_id, location)
+            except SurePetcareError as error:
+                raise HomeAssistantError(
+                    f"Unable to set the location of pet {pet_id}: {error}"
+                ) from error
 
-                if (pet_id := int(call.data.get(ATTR_PET_ID))) and (
-                    where := str(call.data.get(ATTR_WHERE))
-                ):
-
-                    await self.set_pet_location(pet_id, Location[where.upper()])
-                    await self.coordinator.async_request_refresh()
-
-            except ValueError as error:
-                _LOGGER.error(
-                    "🐾 \x1b[38;2;255;26;102m·\x1b[0m arguments of wrong type: %s", error
-                )
+            await self.coordinator.async_request_refresh()
 
         self.hass.services.async_register(
             DOMAIN,
@@ -228,13 +391,19 @@ class SurePetcareAPI:
             schema=pet_location_service_schema,
         )
 
-        async def handle_set_lock_state(call: Any) -> None:
+        async def handle_set_lock_state(call: ServiceCall) -> None:
             """Call when setting the lock state."""
 
-            flap_id = call.data.get(ATTR_FLAP_ID)
-            lock_state = call.data.get(ATTR_LOCK_STATE)
+            flap_id: int = call.data[ATTR_FLAP_ID]
+            lock_state: str = call.data[ATTR_LOCK_STATE]
 
-            await self.set_lock_state(flap_id, lock_state)
+            try:
+                await self.set_lock_state(flap_id, lock_state)
+            except SurePetcareError as error:
+                raise HomeAssistantError(
+                    f"Unable to set the lock state of flap {flap_id}: {error}"
+                ) from error
+
             await self.coordinator.async_request_refresh()
 
         flap_ids = [
@@ -248,11 +417,10 @@ class SurePetcareAPI:
                 vol.Required(ATTR_FLAP_ID): vol.All(cv.positive_int, vol.In(flap_ids)),
                 vol.Required(ATTR_LOCK_STATE): vol.All(
                     cv.string,
+                    vol.Strip,
                     vol.Lower,
                     vol.In(
                         [
-                            # https://github.com/PyCQA/pylint/issues/2062
-                            # pylint: disable=no-member
                             LockState.UNLOCKED.name.lower(),
                             LockState.LOCKED_IN.name.lower(),
                             LockState.LOCKED_OUT.name.lower(),
@@ -269,5 +437,7 @@ class SurePetcareAPI:
             handle_set_lock_state,
             schema=lock_state_service_schema,
         )
+
+        self.setup_done = True
 
         return True

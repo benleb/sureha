@@ -1,0 +1,41 @@
+{
+    "config": {
+        "error": {
+            "invalid_auth": "Autenticazione non valida",
+            "unknown": "Errore imprevisto",
+            "cannot_connect": "Impossibile connettersi"
+        },
+        "step": {
+            "user": {
+                "data": {
+                    "password": "Password",
+                    "username": "Nome utente"
+                },
+                "description": "Accedi con il tuo account Sure Petcare.",
+                "title": "Sure Petcare"
+            }
+        },
+        "abort": {
+            "already_configured": "L'account è già configurato"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "voltage_full": "Volt (batterie cariche)",
+                    "voltage_low": "Volt (batterie scariche)",
+                    "ignored_ids": "Animali/dispositivi ignorati"
+                },
+                "description": "Opzioni batteria",
+                "title": "Opzioni SureHA",
+                "data_description": {
+                    "ignored_ids": "Gli animali e i dispositivi selezionati non vengono creati in Home Assistant."
+                }
+            }
+        },
+        "error": {
+            "invalid_voltage": "Il voltaggio (batterie scariche) deve essere inferiore al voltaggio (batterie cariche)"
+        }
+    }
+}

@@ -1,10 +1,6 @@
 {
     "name": "SureHA",
-    "documentation": "https://github.com/benleb/sureha",
     "content_in_root": false,
     "render_readme": true,
-    "domains": [
-        "binary_sensor",
-        "sensor"
-    ]
+    "homeassistant": "2024.11.0"
 }

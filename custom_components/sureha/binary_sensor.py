@@ -18,18 +18,9 @@ from surepy.enums import EntityType, Location
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
 from .const import DOMAIN, SPC, SURE_MANUFACTURER
+from .util import format_duration
 
 PARALLEL_UPDATES = 2
-
-
-async def async_setup_platform(
-    hass: HomeAssistant,
-    config: ConfigEntry,
-    async_add_entities: Any,
-    discovery_info: Any = None,
-) -> None:
-    """Set up Sure PetCare binary-sensor platform."""
-    await async_setup_entry(hass, config, async_add_entities)
 
 
 async def async_setup_entry(
@@ -41,7 +32,7 @@ async def async_setup_entry(
 
     spc: SurePetcareAPI = hass.data[DOMAIN][SPC]
 
-    for surepy_entity in spc.coordinator.data.values():
+    for surepy_entity in spc.entities:
 
         if surepy_entity.type == EntityType.PET:
             entities.append(Pet(spc.coordinator, surepy_entity.id, spc))
@@ -58,7 +49,7 @@ async def async_setup_entry(
         ]:
             entities.append(DeviceConnectivity(spc.coordinator, surepy_entity.id, spc))
 
-    async_add_entities(entities, True)
+    async_add_entities(entities)
 
 
 class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
@@ -87,14 +78,10 @@ class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
         type_name = self._surepy_entity.type.name.replace("_", " ").title()
 
         self._name: str = (
-            # cover edge case where a device has no name set
-            # (dont know how to do this but people have managed to do it  ¯\_(ツ)_/¯)
             self._surepy_entity.name
             if self._surepy_entity.name
             else f"Unnamed {type_name}"
         )
-
-        self._attr_available = bool(self._state)
 
         self._attr_device_class = None if not device_class else device_class
         self._attr_name: str = f"{type_name} {self._name}"
@@ -104,7 +91,15 @@ class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
             self._attr_extra_state_attributes = {**self._surepy_entity.raw_data()}
 
     @property
+    def available(self) -> bool:
+        """Return True if the entity is available."""
+        return super().available and bool(
+            self._coordinator.data and self._id in self._coordinator.data
+        )
+
+    @property
     def device_info(self):
+        """Return the device info."""
 
         device = {}
 
@@ -146,16 +141,11 @@ class SurePetcareBinarySensor(CoordinatorEntity, BinarySensorEntity):
 
 
 class Hub(SurePetcareBinarySensor):
-    """Sure Petcare Pet."""
+    """Sure Petcare Hub."""
 
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
         """Initialize a Sure Petcare Hub."""
         super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.CONNECTIVITY)
-
-        if self._attr_device_info:
-            self._attr_device_info["identifiers"] = {(DOMAIN, str(self._id))}
-
-        self._attr_available = self.is_on
 
     @property
     def is_on(self) -> bool:
@@ -164,11 +154,12 @@ class Hub(SurePetcareBinarySensor):
         hub: SureHub
         online: bool = False
 
-        if hub := self._coordinator.data[self._id]:
+        if hub := self._coordinator.data.get(self._id):
 
+            status = hub.raw_data().get("status") or {}
             self._attr_extra_state_attributes = {
-                "led_mode": int(hub.raw_data()["status"]["led_mode"]),
-                "pairing_mode": bool(hub.raw_data()["status"]["pairing_mode"]),
+                "led_mode": int(status.get("led_mode") or 0),
+                "pairing_mode": bool(status.get("pairing_mode")),
             }
 
             online = hub.online
@@ -184,10 +175,7 @@ class Pet(SurePetcareBinarySensor):
 
         super().__init__(coordinator, _id, spc, BinarySensorDeviceClass.PRESENCE)
 
-        # explicit typing
         self._surepy_entity: SurePet
-
-        # picture of the pet that can be added via the sure app/website
         self._attr_entity_picture = self._surepy_entity.photo_url
 
     @property
@@ -197,13 +185,15 @@ class Pet(SurePetcareBinarySensor):
         pet: SurePet
         attrs: dict[str, Any] = {}
 
-        if pet := self._coordinator.data[self._id]:
-
+        if pet := self._coordinator.data.get(self._id):
             attrs = {
                 "since": pet.location.since,
                 "where": pet.location.where,
                 **pet.raw_data(),
             }
+
+            if (duration := format_duration(pet.location.since)) is not None:
+                attrs["for"] = duration
 
         return attrs
 
@@ -214,7 +204,7 @@ class Pet(SurePetcareBinarySensor):
         pet: SurePet
         inside: bool = False
 
-        if pet := self._coordinator.data[self._id]:
+        if pet := self._coordinator.data.get(self._id):
             inside = bool(pet.location.where == Location.INSIDE)
 
         return inside
@@ -240,23 +230,28 @@ class DeviceConnectivity(SurePetcareBinarySensor):
         device: SurepyDevice
         attrs: dict[str, Any] = {}
 
-        if (device := self._coordinator.data[self._id]) and (
-            state := device.raw_data().get("status", {})
-        ) and (bool(state.get("online", False))):
-            device_rssi = state.get("signal", {}).get("device_rssi")
-            self._attr_extra_state_attributes["device_rssi"] = f"{device_rssi:.2f}" if device_rssi else "Unknown"
-            hub_rssi = state.get("signal", {}).get("hub_rssi")
-            if hub_rssi is not None:
-                self._attr_extra_state_attributes["hub_rssi"] = f"{hub_rssi:.2f}"
+        if (device := self._coordinator.data.get(self._id)) and (
+            state := device.raw_data().get("status")
+        ):
+            signal = state.get("signal", {})
+            d_rssi = signal.get("device_rssi")
+            h_rssi = signal.get("hub_rssi")
 
             attrs = {
-                "device_rssi": device_rssi,
-                "hub_rssi": hub_rssi,
+                "device_rssi": f"{float(d_rssi):.2f}" if d_rssi is not None else "N/A",
+                "hub_rssi": f"{float(h_rssi):.2f}" if h_rssi is not None else "N/A",
             }
 
         return attrs
 
     @property
     def is_on(self) -> bool:
-        """Return True if the pet is at home."""
-        return bool(self.extra_state_attributes)
+        """Return True if the device is online.
+
+        Based on the "online" flag reported by Sure Petcare (same fix as
+        https://github.com/home-assistant/core/pull/143286): the signal
+        attributes can be present while the device is offline.
+        """
+        if device := self._coordinator.data.get(self._id):
+            return bool((device.raw_data().get("status") or {}).get("online"))
+        return False

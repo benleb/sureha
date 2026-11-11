@@ -3,32 +3,25 @@
 from __future__ import annotations
 
 import logging
-import pprint
-import random
 from typing import Any, cast
 
 from homeassistant.components.sensor import (
-    SensorEntity,
     SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import (
-    ATTR_VOLTAGE,
-    UnitOfMass,
-    PERCENTAGE,
-    UnitOfVolume,
-)
+from homeassistant.const import ATTR_VOLTAGE, PERCENTAGE, UnitOfMass, UnitOfVolume
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from surepy.entities import SurepyEntity
 from surepy.entities.devices import (
     Feeder as SureFeeder,
-    FeederBowl as SureFeederBowl,
     Felaqua as SureFelaqua,
-    Flap as SureFlap,
     SurepyDevice,
 )
-from surepy.enums import EntityType, LockState
+from surepy.enums import BowlPosition, EntityType, LockState
 
 # pylint: disable=relative-beyond-top-level
 from . import SurePetcareAPI
@@ -46,32 +39,31 @@ _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 2
 
-
-async def async_setup_platform(
-    hass: HomeAssistant,
-    config: ConfigEntry,
-    async_add_entities: Any,
-    discovery_info: Any = None,
-) -> None:
-    """Set up Sure PetCare sensor platform."""
-    await async_setup_entry(hass, config, async_add_entities)
+NUM_BATTERIES = 4
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: Any
+    hass: HomeAssistant, config_entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up config entry Sure PetCare Flaps sensors."""
 
-    entities: list[Flap | Felaqua | Feeder | FeederBowl | Battery] = []
+    entities: list[SurePetcareSensor] = []
 
     spc: SurePetcareAPI = hass.data[DOMAIN][SPC]
 
-    for surepy_entity in spc.coordinator.data.values():
+    voltage_full = float(
+        config_entry.options.get(ATTR_VOLTAGE_FULL, SURE_BATT_VOLTAGE_FULL)
+    )
+    voltage_low = float(config_entry.options.get(ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW))
+
+    for surepy_entity in spc.entities:
+
+        status = surepy_entity.raw_data().get("status") or {}
 
         if surepy_entity.type in [
             EntityType.CAT_FLAP,
             EntityType.PET_FLAP,
-        ] and surepy_entity.raw_data().get("status", {}).get("locking"):
+        ] and status.get("locking"):
             entities.append(Flap(spc.coordinator, surepy_entity.id, spc))
 
         elif surepy_entity.type == EntityType.FELAQUA:
@@ -79,25 +71,21 @@ async def async_setup_entry(
 
         elif surepy_entity.type == EntityType.FEEDER:
 
-            bowls = {}
+            # bowl configuration: one entry per bowl (index 0 = left, 1 = right)
+            control = surepy_entity.raw_data().get("control") or {}
+            bowl_settings = (control.get("bowls") or {}).get("settings") or []
+            bowl_indexes = set(range(len(bowl_settings)))
 
-            if len(surepy_entity.bowls) > 0:
-                bowls = surepy_entity.bowls.values()
-            else:
-                if surepy_entity.raw_data()["control"].get("bowls"):
-                    bowls = surepy_entity.raw_data()["control"]["bowls"]
+            # bowls reported with weights by surepy
+            bowl_indexes.update(cast(SureFeeder, surepy_entity).bowls.keys())
 
             _LOGGER.debug(
-                "%s| bowls (%d): %s",
-                surepy_entity.raw_data()["name"],
-                len(bowls),
-                pprint.pformat(bowls),
+                "%s | bowls: %s", surepy_entity.name, sorted(bowl_indexes)
             )
 
-            for bowl in bowls.get("settings", []):
+            for bowl_index in sorted(bowl_indexes):
                 entities.append(
-                    FeederBowl(spc.coordinator, surepy_entity.id, spc, bowl)
-                    # FeederBowl(spc.coordinator, surepy_entity.id, spc, bowl.raw_data())
+                    FeederBowl(spc.coordinator, surepy_entity.id, spc, bowl_index)
                 )
 
             entities.append(Feeder(spc.coordinator, surepy_entity.id, spc))
@@ -107,23 +95,14 @@ async def async_setup_entry(
             EntityType.PET_FLAP,
             EntityType.FEEDER,
             EntityType.FELAQUA,
-        ] and surepy_entity.raw_data().get("status", {}).get("battery", {}):
-
-            voltage_batteries_full = cast(
-                float,
-                config_entry.options.get(ATTR_VOLTAGE_FULL, SURE_BATT_VOLTAGE_FULL),
-            )
-            voltage_batteries_low = cast(
-                float, config_entry.options.get(ATTR_VOLTAGE_LOW, SURE_BATT_VOLTAGE_LOW)
-            )
-
+        ] and status.get("battery"):
             entities.append(
                 Battery(
                     spc.coordinator,
                     surepy_entity.id,
                     spc,
-                    voltage_full=voltage_batteries_full,
-                    voltage_low=voltage_batteries_low,
+                    voltage_full=voltage_full,
+                    voltage_low=voltage_low,
                 )
             )
 
@@ -131,7 +110,7 @@ async def async_setup_entry(
 
 
 class SurePetcareSensor(CoordinatorEntity, SensorEntity):
-    """A binary sensor implementation for Sure Petcare Entities."""
+    """A sensor implementation for Sure Petcare Entities."""
 
     _attr_should_poll = False
 
@@ -145,22 +124,40 @@ class SurePetcareSensor(CoordinatorEntity, SensorEntity):
         self._coordinator = coordinator
 
         self._surepy_entity: SurepyEntity = self._coordinator.data[_id]
-        self._state: dict[str, Any] = self._surepy_entity.raw_data()["status"]
+        self._state: dict[str, Any] = self._surepy_entity.raw_data().get("status") or {}
 
-        self._attr_available = bool(self._state)
         self._attr_unique_id = f"{self._surepy_entity.household_id}-{self._id}"
 
-        self._attr_extra_state_attributes = (
-            {**self._surepy_entity.raw_data()} if self._state else {}
-        )
+        type_name = self._surepy_entity.type.name.replace("_", " ").title()
+        name = self._surepy_entity.name or f"Unnamed {type_name}"
+        self._name = name.capitalize()
 
-        self._attr_name: str = (
-            f"{self._surepy_entity.type.name.replace('_', ' ').title()} "
-            f"{self._surepy_entity.name.capitalize()}"
+        self._attr_name = f"{type_name} {self._name}"
+
+    @property
+    def _data(self) -> SurepyEntity | None:
+        """Return the current surepy entity from the coordinator."""
+        return self._coordinator.data.get(self._id) if self._coordinator.data else None
+
+    @property
+    def available(self) -> bool:
+        """Return True if the entity is available."""
+        return (
+            super().available
+            and (entity := self._data) is not None
+            and bool(entity.raw_data().get("status"))
         )
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the additional attrs."""
+        if entity := self._data:
+            return {**entity.raw_data()}
+        return {}
+
+    @property
     def device_info(self):
+        """Return the device info."""
 
         device = {}
 
@@ -176,7 +173,7 @@ class SurePetcareSensor(CoordinatorEntity, SensorEntity):
 
             device = {
                 "identifiers": {(DOMAIN, self._id)},
-                "name": self._surepy_entity.name.capitalize(),
+                "name": self._name,
                 "manufacturer": SURE_MANUFACTURER,
                 "model": model,
             }
@@ -195,7 +192,7 @@ class SurePetcareSensor(CoordinatorEntity, SensorEntity):
                         f"fw: {rf_version.get('version', rf_version)['firmware']}"
                     )
 
-        except AttributeError:
+        except (AttributeError, KeyError, TypeError):
             pass
 
         return device
@@ -204,138 +201,150 @@ class SurePetcareSensor(CoordinatorEntity, SensorEntity):
 class Flap(SurePetcareSensor):
     """Sure Petcare Flap."""
 
+    _attr_icon = "mdi:door"
+
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI) -> None:
+        """Initialize a Sure Petcare flap sensor."""
         super().__init__(coordinator, _id, spc)
 
-        self._surepy_entity: SureFlap
-
-        self._attr_entity_picture = self._surepy_entity.icon
-        self._attr_unit_of_measurement = None
-
-        if self._state:
-            self._attr_extra_state_attributes = {
-                "learn_mode": bool(self._state["learn_mode"]),
-                **self._surepy_entity.raw_data(),
-            }
-
-            if locking := self._state.get("locking"):
-                self._attr_state = LockState(locking["mode"]).name.casefold()
+        self._attr_entity_picture = getattr(self._surepy_entity, "icon", None)
 
     @property
-    def state(self) -> str | None:
-        """Return battery level in percent."""
-        if (
-            state := cast(SureFlap, self._coordinator.data[self._id])
-            .raw_data()
-            .get("status")
-        ):
-            return LockState(state["locking"]["mode"]).name.casefold()
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the additional attrs."""
+        attrs = super().extra_state_attributes
+
+        if (entity := self._data) and (status := entity.raw_data().get("status")):
+            attrs = {"learn_mode": bool(status.get("learn_mode")), **attrs}
+
+        return attrs
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the lock state of the flap."""
+
+        if not (entity := self._data):
+            return None
+
+        status = entity.raw_data().get("status") or {}
+        mode = (status.get("locking") or {}).get("mode")
+
+        try:
+            return LockState(mode).name.casefold() if mode is not None else None
+        except ValueError:
+            _LOGGER.debug("unknown lock mode for flap %s: %s", self._id, mode)
+            return None
 
 
 class Felaqua(SurePetcareSensor):
     """Sure Petcare Felaqua."""
 
+    _attr_native_unit_of_measurement = UnitOfVolume.MILLILITERS
+    _attr_device_class = SensorDeviceClass.VOLUME_STORAGE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI):
+        """Initialize a Sure Petcare Felaqua sensor."""
         super().__init__(coordinator, _id, spc)
 
-        self._surepy_entity: SureFelaqua
-
-        self._attr_entity_picture = self._surepy_entity.icon
-        self._attr_unit_of_measurement = UnitOfVolume.MILLILITERS
+        self._attr_entity_picture = getattr(self._surepy_entity, "icon", None)
 
     @property
-    def state(self) -> float | None:
+    def native_value(self) -> int | None:
         """Return the remaining water."""
-        if felaqua := cast(SureFelaqua, self._coordinator.data[self._id]):
-            return int(felaqua.water_remaining) if felaqua.water_remaining else None
+        if (felaqua := cast(SureFelaqua, self._data)) and (
+            remaining := felaqua.water_remaining
+        ) is not None:
+            return int(remaining)
+        return None
 
 
 class FeederBowl(SurePetcareSensor):
     """Sure Petcare Feeder Bowl."""
+
+    _attr_icon = "mdi:bowl"
+    _attr_native_unit_of_measurement = UnitOfMass.GRAMS
+    _attr_device_class = SensorDeviceClass.WEIGHT
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
         coordinator,
         _id: int,
         spc: SurePetcareAPI,
-        bowl_data: dict[str, int | str],
+        bowl_index: int,
     ):
         """Initialize a Bowl sensor."""
         super().__init__(coordinator, _id, spc)
 
-        _LOGGER.debug("bowl_data: %s", pprint.pformat(bowl_data))
+        self.bowl_index = bowl_index
 
-        self.feeder_id = _id
+        try:
+            position = BowlPosition(bowl_index).name.title()
+        except ValueError:
+            position = str(bowl_index)
 
-        # todo: index parameter is not available in the bowl_data anymore
-        # for now we use a random number...
-        self.bowl_id = random.randint(
-            1, 10
-        )  # int(bowl_data.get("index", random.randint(1, 10)))
-
-        self._id = int(f"{_id}{str(self.bowl_id)}")
-        self._spc: SurePetcareAPI = spc
-
-        self._surepy_feeder_entity: SurepyEntity = self._coordinator.data[_id]
-
-        self._state: dict[str, Any] = bowl_data
-
-        # https://github.com/PyCQA/pylint/issues/2062
-        # pylint: disable=no-member
-        self._attr_name = (
-            f"{EntityType.FEEDER.name.replace('_', ' ').title()} "
-            f"{self._surepy_entity.name.capitalize()}"
-        )
-
-        self._attr_icon = "mdi:bowl"
-
-        if hasattr(self._surepy_entity, "weight"):
-            self._attr_state = int(self._surepy_entity.weight)
-
+        self._attr_name = f"{self._attr_name} Bowl {position}"
         self._attr_unique_id = (
-            f"{self._surepy_feeder_entity.household_id}-{self.feeder_id}-{self.bowl_id}"
+            f"{self._surepy_entity.household_id}-{self._id}-bowl-{bowl_index}"
         )
-        self._attr_unit_of_measurement = UnitOfMass.GRAMS
 
     @property
-    def state(self) -> float | None:
-        """Return the remaining water."""
-
-        _LOGGER.debug(
-            "self._coordinator.data[%d]: %s",
-            self.feeder_id,
-            pprint.pformat(self._coordinator.data[self.feeder_id]),
-        )
-
-        if (
-            (feeder := cast(SureFeeder, self._coordinator.data[self.feeder_id]))
-            and len(feeder.bowls) > 0
-            and hasattr(feeder.bowls[self.bowl_id], "weight")
-            and (weight := feeder.bowls[self.bowl_id].weight)
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the additional attrs."""
+        if (feeder := cast(SureFeeder, self._data)) and (
+            bowl := feeder.bowls.get(self.bowl_index)
         ):
-            return int(weight) if weight and weight > 0 else None
+            return {"bowl_index": self.bowl_index, **bowl.raw_data()}
+        return {"bowl_index": self.bowl_index}
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the remaining food in the bowl."""
+
+        if (feeder := cast(SureFeeder, self._data)) and (
+            bowl := feeder.bowls.get(self.bowl_index)
+        ):
+            try:
+                weight = bowl.weight
+            except (KeyError, TypeError, ValueError):
+                return None
+
+            return int(weight) if weight > 0 else 0
+
+        return None
 
 
 class Feeder(SurePetcareSensor):
     """Sure Petcare Feeder."""
 
+    _attr_native_unit_of_measurement = UnitOfMass.GRAMS
+    _attr_device_class = SensorDeviceClass.WEIGHT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
     def __init__(self, coordinator, _id: int, spc: SurePetcareAPI):
+        """Initialize a Sure Petcare feeder sensor."""
         super().__init__(coordinator, _id, spc)
 
-        self._surepy_entity: SureFeeder
-
-        self._attr_entity_picture = self._surepy_entity.icon
-        self._attr_unit_of_measurement = UnitOfMass.GRAMS
+        self._attr_entity_picture = getattr(self._surepy_entity, "icon", None)
 
     @property
-    def state(self) -> float | None:
+    def native_value(self) -> int | None:
         """Return the total remaining food."""
-        if feeder := cast(SureFeeder, self._coordinator.data[self._id]):
-            return int(feeder.total_weight) if feeder.total_weight else None
+        if feeder := cast(SureFeeder, self._data):
+            try:
+                return int(feeder.total_weight)
+            except (KeyError, TypeError, ValueError):
+                return None
+        return None
 
 
 class Battery(SurePetcareSensor):
-    """Sure Petcare Flap."""
+    """Sure Petcare device battery."""
+
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_device_class = SensorDeviceClass.BATTERY
+    _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
         self,
@@ -345,54 +354,52 @@ class Battery(SurePetcareSensor):
         voltage_full: float,
         voltage_low: float,
     ):
+        """Initialize a Sure Petcare battery sensor."""
         super().__init__(coordinator, _id, spc)
-
-        self._surepy_entity: SurepyDevice
 
         self._attr_name = f"{self._attr_name} Battery Level"
 
         self.voltage_low = voltage_low
         self.voltage_full = voltage_full
 
-        self._attr_unit_of_measurement = PERCENTAGE
-        self._attr_device_class = SensorDeviceClass.BATTERY
         self._attr_unique_id = (
             f"{self._surepy_entity.household_id}-{self._surepy_entity.id}-battery"
         )
 
     @property
-    def state(self) -> int | None:
+    def native_value(self) -> int | None:
         """Return battery level in percent."""
 
-        if battery := cast(SurepyDevice, self._coordinator.data[self._id]):
-
-            self._surepy_entity = battery
-            self.device_class = SensorDeviceClass.BATTERY
-            self.native_unit_of_measurement = PERCENTAGE
-            battery_level = battery.calculate_battery_level(
-                voltage_full=self.voltage_full, voltage_low=self.voltage_low
+        if device := cast(SurepyDevice, self._data):
+            return device.calculate_battery_level(
+                voltage_full=self.voltage_full,
+                voltage_low=self.voltage_low,
+                num_batteries=NUM_BATTERIES,
             )
 
-            # return batterie level between 0 and 100
-            return battery_level
+        return None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Return the additional attrs."""
 
-        attrs = {}
+        attrs: dict[str, Any] = {}
 
-        if (device := cast(SurepyDevice, self._coordinator.data[self._id])) and (
+        if (device := cast(SurepyDevice, self._data)) and (
             state := device.raw_data().get("status")
         ):
-            self._surepy_entity = device
+            attrs = {**device.raw_data()}
 
-            voltage = float(state["battery"])
+            try:
+                voltage = float(state["battery"])
+            except (KeyError, TypeError, ValueError):
+                return attrs
 
-            attrs = {
-                "battery_level": device.battery_level,
-                ATTR_VOLTAGE: f"{voltage:.2f}",
-                f"{ATTR_VOLTAGE}_per_battery": f"{voltage / 4:.2f}",
-            }
+            attrs.update(
+                {
+                    ATTR_VOLTAGE: f"{voltage:.2f}",
+                    f"{ATTR_VOLTAGE}_per_battery": f"{voltage / NUM_BATTERIES:.2f}",
+                }
+            )
 
         return attrs

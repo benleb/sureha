@@ -42,10 +42,27 @@ There will be 1 entity per cat flap with the following attributes
   
 | Attribute | Example |
 |---------------------|-------------------|
+The state is the battery level in % (calculated with the voltages set in the integration options).
+
+| Attribute | Example |
+|---------------------|-------------------|
 | Voltage             | 5.09              |
 | Voltage per battery | 1.27              |
-| Alt-battery         | 16.82560000000002 |
 </details>
+
+### lock.\<flap\>_locked_in / lock.\<flap\>_locked_out / lock.\<flap\>_locked_all
+
+Every cat/pet flap gets three lock entities, like the official Sure Petcare integration:
+
+| Entity | Locked means |
+|---|---|
+| `lock.<flap>_locked_in` | pets can come in but not go out |
+| `lock.<flap>_locked_out` | pets can go out but not come in |
+| `lock.<flap>_locked_all` | the flap is locked in both directions |
+
+Locking one of them switches the flap to that mode (the other two become unlocked).
+Unlocking the active one unlocks the flap; unlocking a mode that is not active does nothing.
+During a curfew all three are shown as unlocked.
 
 ### binary_sensor.hub
 
@@ -66,6 +83,7 @@ There will be 1 entity per cat flap with the following attributes
 
 | Attribute                  | Example                                                                |
 |----------------------------|------------------------------------------------------------------------|
+| For                        | 04:25 or 1d 04:25 (time since the last move; omitted if unknown)       |
 | Since                      | September 18, 2021, 4:09:42 PM                                         |
 | Where                      | 1                                                                      |
 | ID                         | 123456                                                                 |
@@ -89,6 +107,29 @@ There will be 1 entity per cat flap with the following attributes
 
 ### binary_sensor.flap_connectivity
 
+`on` when the device (flap, feeder, Felaqua) is online.
+
+<details>
+  <summary>Click to expand!</summary>
+
+| Attribute   | Example |
+|-------------|---------|
+| Device rssi | -35.00  |
+| Hub rssi    | -42.00  |
+
+</details>
+
+## Removing a pet or device
+
+Pets and devices that are removed from your Sure Petcare account are removed from Home Assistant automatically (within a few minutes, or at the next restart).
+
+If a pet or device is still listed in your Sure Petcare account but you no longer want it in Home Assistant:
+
+1. Go to **Settings → Devices & services → SureHA** and open the pet/device.
+2. Use the **⋮ menu → Delete**.
+
+Its entities are removed and it is added to the *ignored* list, so it is not created again.
+To bring it back, open the integration's **Configure** dialog and untick it under *Ignored pets/devices*.
 
 ## Services
 
@@ -115,14 +156,14 @@ data:
   
   Data needed:<br>
     - flap_id = this is the surepetcare id for the flap you want to change.<br>
-    - lock_state = 
+    - lock_state = one of `unlocked`, `locked_in`, `locked_out`, `locked_all`
   
- example:
- ```yaml
- service: sureha.set_lock_state
+example:
+```yaml
+service: sureha.set_lock_state
 data:
   flap_id: 123456
-  lock_state: locked
+  lock_state: locked_all
 ```
 
 
